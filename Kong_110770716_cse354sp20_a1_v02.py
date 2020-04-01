@@ -22,7 +22,7 @@ def tokenize(sent):
     #<FILL IN>
     #The second group does the majority of words with hashtags and @'s
     #The first group tackles the abbreviations
-    tokenizer = re.compile('(?:[a-zA-Z]\.){2,}|[#@]*[a-zA-Z0-9]+[\'’-]*[a-z\.]*')
+    tokenizer = re.compile('(?:[a-zA-Z]\.){2,}|[#@]*[a-zA-Z0-9]*[\'’-]*[a-z]+|[.,!?;]|[A-Z]+|[\n]')
     return tokenizer.findall(sent)
 
 
