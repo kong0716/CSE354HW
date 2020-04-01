@@ -92,33 +92,81 @@ def create_trigram_matrix(tokens, vocab):
 #STEP 2.4: Create a method to calculate the probability of all possible current words wi 
 #           given either a single previous word (wi-1 -- a bigram model) 
 #           or two previous words (wi-1 and wi-2 -- a trigram model).
-def probabilities(wi1, bigram_dict, tokens, vocab):
+def probabilities(bigram_dict, trigram_dict, tokens, vocab, *args):
+    wi1 = None
+    wi2 = None
     prob_dict = dict()
     sum = 0
-    if wi1 in bigram_dict:
-        temp = list(bigram_dict.get(wi1).keys())
-        temp.remove("<OOV>")
-        #No words available based on wi-1
-        if len(temp) == 0:
-            #unigram
+    if len(args) == 1:
+        wi1 = args[0].lower()
+        if wi1 in bigram_dict:
+            temp = list(bigram_dict.get(wi1).keys())
+            if "<OOV>" in temp:
+                temp.remove("<OOV>")
+            if len(temp) == 0:
+                #No words available based on wi-1 then do the unigram model
+                prob = vocab.get(wi0)/len(tokens)
+                prob_dict.update({wi0 : prob})
+                sum = 1
+            else:
+                #add-one smoothing bigram model
+                for wi0 in temp:
+                    prob = (bigram_dict.get(wi1).get(wi0) + 1)/(vocab.get(wi1) + len(vocab))
+                    sum += prob
+                    prob_dict.update({wi0 : prob})
+        else:
+            return prob_dict
+    if len(args) == 2:
+        # wi-1 and wi-2 respectively
+        wi2 = args[0].lower()
+        wi1 = args[1].lower()
+        if (wi2, wi1) in trigram_dict:
+            temp = list(trigram_dict.get((wi2, wi1)).keys())
+            if "<OOV>" in temp:
+                temp.remove("<OOV>")
+            for wi0 in temp:
+                trigram_prob = (trigram_dict.get((wi2, wi1)).get(wi0) + 1) / (bigram_dict.get(wi2).get(wi1) + len(vocab))
+                bigram_prob = (bigram_dict.get(wi1).get(wi0) + 1) / (vocab.get(wi1) + len(vocab))
+                prob = (bigram_prob + trigram_prob) / 2
+                prob_dict.update({wi0 : prob})
+                sum += prob
+    return prob_dict
+def probability(wi0, bigram_dict, trigram_dict, tokens, vocab, *args):
+    prob_dict = probabilities(bigram_dict, trigram_dict, tokens, vocab, *args)
+    if wi0 in prob_dict:
+        return prob_dict.get(wi0)
+    elif len(args) == 1:
+        wi1 = args[0].lower()
+        if wi1 in bigram_dict:
+            temp = list(bigram_dict.get(wi1).keys())
+            if "<OOV>" in temp:
+                temp.remove("<OOV>")
+            if len(temp) == 0:
+                #No words available based on wi-1 then do the unigram model
+                prob = vocab.get(wi0)/len(tokens)
+                return prob
+            else:
+                #add-one smoothing bigram model
+                prob = (bigram_dict.get(wi1).get(wi0, 0) + 1)/(vocab.get(wi1, 0) + len(vocab))
+                return prob
+        else:
+            # wi-1 doesn't exist in the bigram
             prob = vocab.get(wi0)/len(tokens)
             prob_dict.update({wi0 : prob})
+    elif len(args) == 2:
+        # wi-1 and wi-2 respectively
+        wi2 = args[0].lower()
+        wi1 = args[1].lower()
+        prob = 0
+        if (wi2, wi1) in trigram_dict:
+            trigram_prob = (trigram_dict.get((wi2, wi1)).get(wi0, 0) + 1) / (bigram_dict.get(wi2).get(wi1, 0) + len(vocab))
+            bigram_prob = (bigram_dict.get(wi1).get(wi0, 0) + 1) / (vocab.get(wi1, 0) + len(vocab))
+            prob = (bigram_prob + trigram_prob) / 2
         else:
-        #add-one smoothing bigram model
-            for wi0 in temp:
-                prob = (bigram_dict.get(wi1).get(wi0) + 1)/(vocab.get(wi1) + len(vocab))
-                sum += prob
-                prob_dict.update({wi0 : prob})
-    else:
-        # unigram
-        prob = vocab.get(wi0)/len(tokens)
-        prob_dict.update({wi0 : prob})
-    #print(sum)
-    '''
-    for key in prob_dict.keys():
-        prob_dict.update({key : prob_dict.get(key)/sum})
-    '''
-    return prob_dict
+            trigram_prob = 1/(len(vocab))
+            bigram_prob = (bigram_dict.get(wi1).get(wi0, 0) + 1) / (vocab.get(wi1, 0) + len(vocab))
+            prob = prob = (bigram_prob + trigram_prob) / 2
+        return prob
 
 def listdif(one, one_cpy):
     if one == one_cpy:
@@ -161,19 +209,15 @@ def stage2checkpoint():
     vocab = create_vocab_dict(tokens)
     bigram = create_bigram_matrix(tokens, vocab)
     trigram = create_trigram_matrix(tokens, vocab)
-    print(probabilities("midnight", bigram, tokens, vocab).get("special"))
-    print(probabilities("very", bigram, tokens, vocab).get("special"))
+    print(probability("you", bigram, trigram, tokens, vocab,"i", "love"))
+    print(probability("special", bigram, trigram, tokens, vocab,"midnight"))
+    print(probability("special", bigram, trigram, tokens, vocab,"very"))
+    print(probability("special", bigram, trigram, tokens, vocab,"something", "very"))
+    print(probability("funny", bigram, trigram, tokens, vocab,"something", "very"))
 
-'''
-def probability(wi0, wi1, wi2, trigram_dict, bigram_dict, tokens, vocab):
-    if (wi1, wi2) in trigram_dict:
-        #Interpolating
-        return ( (probabilities(wi0, wi1, bigram_dict, tokens, vocab)) 
-            + ( (trigram_dict.get((wi1, wi2)).get(wi0) + 1)/(bigram_dict.get(wi1).get(wi2) + len(vocab))))/2
-    else:
-        #Falls to the bigrams
-        return probabilities(wi0, wi1, bigram_dict, tokens, vocab)
-'''
+## Stage 3 Checkpoint
+def stage3checkpoint():
+    
 ##################################################################
 #4. Adjective Classifier
 
