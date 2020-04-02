@@ -1,5 +1,5 @@
 import  re, numpy as np, sklearn, scipy.stats, pandas, csv
-import random, math
+import random, math, sys
 from collections import Counter, defaultdict
 
 ## STEP 1.2:Read the csv into memory
@@ -104,10 +104,9 @@ def probabilities(bigram_dict, trigram_dict, tokens, vocab, *args):
             if "<OOV>" in temp:
                 temp.remove("<OOV>")
             if len(temp) == 0:
-                #No words available based on wi-1 then do the unigram model
-                prob = vocab.get(wi0)/len(tokens)
-                prob_dict.update({wi0 : prob})
-                sum = 1
+                #No words available based on wi-1 then do the unigram model in def probability()
+                #Returns an empty dictionary
+                return prob_dict
             else:
                 #add-one smoothing bigram model
                 for wi0 in temp:
@@ -205,7 +204,7 @@ def stage1checkpoint():
 
 ## Stage 2 Checkpoint
 def stage2checkpoint():
-    lyricTokens = tokensfromNlyrics(5000)
+    lyricTokens = tokensfromNlyrics(len(preparecsv()))
     vocab = create_vocab_dict(lyricTokens)
     bigram = create_bigram_matrix(lyricTokens, vocab)
     trigram = create_trigram_matrix(lyricTokens, vocab)
@@ -324,7 +323,8 @@ def getConllTags(filename):
 
 ## Step 3.1
 def getBestAdjModel(wordToIndex):
-
+    #load data for 3 and 4 the adjective classifier data:
+    taggedSents = getConllTags('daily547.conll')
     #3. Test Feature Extraction:
     #print("\n[ Feature Extraction Test ]\n")
 
@@ -366,16 +366,10 @@ def getBestAdjModel(wordToIndex):
 
 ## STEP 3.2 Extract features for adjective classifier
 def extractFeatures(unique_id, wordToIndex):
+    return 0
 
-    return featuresPerTarget(tokens, wordToIndex)
-
-
-# Main
-if __name__== '__main__':
-    from sklearn.model_selection import train_test_split
-    #stage1checkpoint()
-    #stage2checkpoint()
-
+## Step 3.3
+def getAdjDict():
     #load data for 3 and 4 the adjective classifier data:
     taggedSents = getConllTags('daily547.conll')
     #first make word to index mapping: 
@@ -393,17 +387,39 @@ if __name__== '__main__':
     csv_dict = preparecsv()
     #print(csv_dict)
     ids = csv_dict.keys()
+    adj_dict = dict()
     for id in ids:
+        #Tokenizes each title
         titleTokens = tokenize_song(id, csv_dict)
         for t in range(len(titleTokens)):
             titleTokens[t] = titleTokens[t].lower()
         y_pred = model.predict(getFeaturesForTokens(titleTokens, wordToIndex))
         indices = [i for i, x in enumerate(y_pred) if x == 1]
         for i in indices:
-            #print(titleTokens[i])
+            if titleTokens[i].lower() in adj_dict:
+                #print(adj_dict)
+                templist = adj_dict.get(titleTokens[i].lower())
+                templist.append(id)
+                adj_dict.update({titleTokens[i].lower() : templist})
+            else:
+                templist = [id]
+                adj_dict.update({titleTokens[i].lower() : templist})
+    #Remove adjectives that appear 10 or less times
+    keys = list(adj_dict.keys())
+    #print(keys)
+    for i in range(len(keys)):
+        if len(adj_dict.get(keys[i])) <= 10:
+            adj_dict.pop(keys[i], None)
+    print("Finished Step 3.3")
+    return adj_dict
+
+# Main
+if __name__== '__main__':
+    from sklearn.model_selection import train_test_split
+    #stage1checkpoint()
+    #stage2checkpoint()
+    print(getAdjDict())
     print("Finished")
-
-
 '''
     #Test the tagger.
     from sklearn.metrics import classification_report
