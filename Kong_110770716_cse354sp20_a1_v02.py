@@ -240,6 +240,10 @@ if __name__== '__main__':
     y_pred = tagger.predict(X_test)
     #compute accuracy:
     leny = len(y_test)
+    print(X_test[0])
+    print(y_pred)
+    if 2 in y_pred:
+        print("In")
     print("test n: ", leny)
     acc = np.sum([1 if (y_pred[i] == y_test[i]) else 0 for i in range(leny)]) / leny
     print("Accuracy: %.4f" % acc)

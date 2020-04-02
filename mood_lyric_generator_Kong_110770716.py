@@ -1,5 +1,5 @@
 import  re, numpy as np, sklearn, scipy.stats, pandas, csv
-import random
+import random, math
 from collections import Counter, defaultdict
 
 ## STEP 1.2:Read the csv into memory
@@ -205,25 +205,67 @@ def stage1checkpoint():
 
 ## Stage 2 Checkpoint
 def stage2checkpoint():
-    tokens = tokensfromNlyrics(5000)
-    vocab = create_vocab_dict(tokens)
-    bigram = create_bigram_matrix(tokens, vocab)
-    trigram = create_trigram_matrix(tokens, vocab)
-    print(probability("you", bigram, trigram, tokens, vocab,"i", "love"))
-    print(probability("special", bigram, trigram, tokens, vocab,"midnight"))
-    print(probability("special", bigram, trigram, tokens, vocab,"very"))
-    print(probability("special", bigram, trigram, tokens, vocab,"something", "very"))
-    print(probability("funny", bigram, trigram, tokens, vocab,"something", "very"))
+    lyricTokens = tokensfromNlyrics(5000)
+    vocab = create_vocab_dict(lyricTokens)
+    bigram = create_bigram_matrix(lyricTokens, vocab)
+    trigram = create_trigram_matrix(lyricTokens, vocab)
+    print(probability("you", bigram, trigram, lyricTokens, vocab,"i", "love"))
+    print(probability("special", bigram, trigram, lyricTokens, vocab,"midnight"))
+    print(probability("special", bigram, trigram, lyricTokens, vocab,"very"))
+    print(probability("special", bigram, trigram, lyricTokens, vocab,"something", "very"))
+    print(probability("funny", bigram, trigram, lyricTokens, vocab,"something", "very"))
 
 ## Stage 3 Checkpoint
-def stage3checkpoint():
-    
+#def stage3checkpoint():
+
 ##################################################################
 #4. Adjective Classifier
 
+
+def getFeaturesForTokens(tokens, wordToIndex):
+    #input: tokens: a list of tokens,
+    #wordToIndex: dict mapping 'word' to an index in the feature list.
+    #output: list of lists (or np.array) of k feature values for the given target
+    num_words = len(tokens)
+    
+    featuresPerTarget = list() #holds arrays of feature per word
+    #Offset for the feature vector, 2 for number of vowels and number of consonants
+    offset = 2 
+    #Used for "concatenation" of the one hot vectors
+    onehotOffset = len(wordToIndex)
+    for targetI in range(num_words):
+        vowelctr = 0
+        consonantctr = 0
+        prevword = 0
+        nextword = 0
+        for i in range(0, len(tokens[targetI])):
+            if tokens[targetI][i] in "aeiouAEIOU":
+                vowelctr += 1
+            if not tokens[targetI][i] in "aeiouAEIOU" and tokens[targetI].isalpha():
+                consonantctr += 1
+        if not (targetI == 0 or targetI == num_words-1):
+            prevword = wordToIndex.get(tokens[targetI-1].lower(), 0)
+            nextword = wordToIndex.get(tokens[targetI+1].lower(), 0)
+        #Cases for the beginning and end of the tokens
+        if targetI == 0 and num_words > 1:
+            nextword = wordToIndex.get(tokens[targetI+1].lower(), 0)
+        if targetI == num_words-1 and num_words > 1:
+            prevword = wordToIndex.get(tokens[targetI-1].lower(), 0)
+
+        pass
+        featureVector = [0]*(len(wordToIndex)*3+offset)
+        featureVector[0] = vowelctr
+        featureVector[1] = consonantctr
+        featureVector[prevword + offset] = 1
+        featureVector[wordToIndex.get(tokens[targetI].lower(), 0) + offset + onehotOffset] = 1
+        featureVector[nextword + offset + 2*onehotOffset] = 1
+        featuresPerTarget.insert(targetI,featureVector)
+    return featuresPerTarget #a (num_words x k) matrix
+
 from sklearn.linear_model import LogisticRegression
 
-def trainTestAdjectiveClassifier(X_subtrain, X_dev, y_subtrain, y_dev, c):
+
+def trainTestAdjectiveClassifier(X_train, y_train, X_subtrain, X_dev, y_subtrain, y_dev, c):
     #inputs: features: feature vectors (i.e. X)
     #        adjs: whether adjective or not: [0, 1] (i.e. y)
     #output: model -- a trained sklearn.linear_model.LogisticRegression object
@@ -241,14 +283,15 @@ def trainAdjectiveClassifier(features, adjs):
     oldacc = 0
     optimalc = 0
     for i in range(0, 10):
-        model = trainTestAdjectiveClassifier(X_subtrain, X_dev, y_subtrain, y_dev, math.pow(10, i))
+        model = trainTestAdjectiveClassifier(features, adjs, X_subtrain, X_dev, y_subtrain, y_dev, math.pow(10, i))
         y_pred = model.predict(X_dev)
+        #print(y_pred)
         #calculate accuracy:
         newacc = (1 - np.sum(np.abs(y_pred - y_dev))/len(y_dev) )
         if newacc > oldacc:
             optimalc = math.pow(10, i)
             oldacc = newacc
-    bestmodel = trainTestAdjectiveClassifier(X_subtrain, X_dev, y_subtrain, y_dev, optimalc)
+    bestmodel = trainTestAdjectiveClassifier(features, adjs, X_subtrain, X_dev, y_subtrain, y_dev, optimalc)
     print("Optimal C is : " + str(optimalc))
     return bestmodel
 
@@ -279,49 +322,29 @@ def getConllTags(filename):
                 sentNum+=1
     return wordTagsPerSent
 
-## STEP 3.1
-
-
-# Main
-if __name__== '__main__':
-    stage1checkpoint()
-    stage2checkpoint()
-    '''
-    print("Initiating test. Version " , _version_)
-        
-    #load data for 3 and 4 the adjective classifier data:
-    taggedSents = getConllTags('daily547.conll')
+## Step 3.1
+def getBestAdjModel(wordToIndex):
 
     #3. Test Feature Extraction:
-    print("\n[ Feature Extraction Test ]\n")
-    #first make word to index mapping: 
-    wordToIndex = set() #maps words to an index
-    for sent in taggedSents:
-        if sent:
-            words, tags = zip(*sent) #splits [(w, t), (w, t)] into [w, w], [t, t]
-            wordToIndex |= set([w.lower() for w in words]) #union of the words into the set
-    print("  [Read ", len(taggedSents), " Sentences]")
-    #turn set into dictionary: word: index
-    wordToIndex = {w: i for i, w in enumerate(wordToIndex)}
+    #print("\n[ Feature Extraction Test ]\n")
 
     #Next, call Feature extraction per sentence
     sentXs = []
     sentYs = []
-    print("  [Extracting Features]")
+    #print("  [Extracting Features]")
     for sent in taggedSents:
         if sent:
             words, tags = zip(*sent)
             sentXs.append(getFeaturesForTokens(words, wordToIndex)) 
             sentYs.append([1 if t == 'A' else 0 for t in tags])
     #test sentences
-    print("\n", taggedSents[5], "\n", sentXs[5], "\n")
-    print(taggedSents[192], "\n", sentXs[192], "\n")
+    #print("\n", taggedSents[5], "\n", sentXs[5], "\n")
+    #print(taggedSents[192], "\n", sentXs[192], "\n")
 
 
     #4. Test Classifier Model Building
-    print("\n[ Classifier Test ]\n")
+    #print("\n[ Classifier Test ]\n")
     #setup train/test:
-    from sklearn.model_selection import train_test_split
     #flatten by word rather than sent: 
     X = [j for i in sentXs for j in i]
     y= [j for i in sentYs for j in i]
@@ -334,13 +357,54 @@ if __name__== '__main__':
         print("\nLooks like you haven't implemented feature extraction yet.")
         print("[Ending test early]")
         sys.exit(1)
-    print("  [Broke into training/test. X_train is ", X_train.shape, "]")
+    #print("  [Broke into training/test. X_train is ", X_train.shape, "]")
     #Train the model.
-    print("  [Training the model]")
+    #print("  [Training the model]")
     tagger = trainAdjectiveClassifier(X_train, y_train)
-    print("  [Done]")
-    
+    #print("  [Done]")
+    return tagger
 
+## STEP 3.2 Extract features for adjective classifier
+def extractFeatures(unique_id, wordToIndex):
+
+    return featuresPerTarget(tokens, wordToIndex)
+
+
+# Main
+if __name__== '__main__':
+    from sklearn.model_selection import train_test_split
+    #stage1checkpoint()
+    #stage2checkpoint()
+
+    #load data for 3 and 4 the adjective classifier data:
+    taggedSents = getConllTags('daily547.conll')
+    #first make word to index mapping: 
+    wordToIndex = set() #maps words to an index
+    for sent in taggedSents:
+        if sent:
+            words, tags = zip(*sent) #splits [(w, t), (w, t)] into [w, w], [t, t]
+            wordToIndex |= set([w.lower() for w in words]) #union of the words into the set
+    #print("  [Read ", len(taggedSents), " Sentences]")
+    #turn set into dictionary: word: index
+    wordToIndex = {w: i for i, w in enumerate(wordToIndex)}
+
+    model = getBestAdjModel(wordToIndex)
+
+    csv_dict = preparecsv()
+    #print(csv_dict)
+    ids = csv_dict.keys()
+    for id in ids:
+        titleTokens = tokenize_song(id, csv_dict)
+        for t in range(len(titleTokens)):
+            titleTokens[t] = titleTokens[t].lower()
+        y_pred = model.predict(getFeaturesForTokens(titleTokens, wordToIndex))
+        indices = [i for i, x in enumerate(y_pred) if x == 1]
+        for i in indices:
+            #print(titleTokens[i])
+    print("Finished")
+
+
+'''
     #Test the tagger.
     from sklearn.metrics import classification_report
     #get predictions:
@@ -352,6 +416,3 @@ if __name__== '__main__':
     print("Accuracy: %.4f" % acc)
     #print(classification_report(y_test, y_pred, ['not_adj', 'adjective']))
 '''
-
-
-
