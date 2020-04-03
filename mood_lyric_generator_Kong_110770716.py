@@ -40,6 +40,7 @@ def tokenize_lyrics(id, csv_dict):
     tokens.insert(0, "<s>")
     tokens.insert(len(tokens), "</s>")
     for i in range(len(tokens)):
+        tokens[i] == tokens[i]
         if tokens[i] == "\n":
             tokens[i] = "<newline>"
     return tokens
@@ -62,8 +63,10 @@ def tokensfromNlyrics(nlyrics):
     #print(sample_ids)
     for id in sample_ids:
         tokens += tokenize_lyrics(id, csv_dict)
+    '''
     for i in range(len(tokens)):
         tokens[i] = tokens[i].lower()
+    '''
     return tokens
 #STEP 2.2 - 2.3: Create a bigram/trigram matrix (rows as previous word; columns as current word)
 def create_bigram_matrix(tokens, vocab):
@@ -98,7 +101,7 @@ def probabilities(bigram_dict, trigram_dict, tokens, vocab, *args):
     prob_dict = dict()
     sum = 0
     if len(args) == 1:
-        wi1 = args[0].lower()
+        wi1 = args[0]
         if wi1 in bigram_dict:
             temp = list(bigram_dict.get(wi1).keys())
             if "<OOV>" in temp:
@@ -117,25 +120,27 @@ def probabilities(bigram_dict, trigram_dict, tokens, vocab, *args):
             return prob_dict
     if len(args) == 2:
         # wi-1 and wi-2 respectively
-        wi2 = args[0].lower()
-        wi1 = args[1].lower()
+        wi2 = args[0]
+        wi1 = args[1]
         if (wi2, wi1) in trigram_dict:
             temp = list(trigram_dict.get((wi2, wi1)).keys())
             if "<OOV>" in temp:
                 temp.remove("<OOV>")
             for wi0 in temp:
-                trigram_prob = (trigram_dict.get((wi2, wi1)).get(wi0) + 1) / (bigram_dict.get(wi2).get(wi1) + len(vocab))
-                bigram_prob = (bigram_dict.get(wi1).get(wi0) + 1) / (vocab.get(wi1) + len(vocab))
+                trigram_prob = (trigram_dict.get((wi2, wi1)).get(wi0, 0) + 1) / (bigram_dict.get(wi2).get(wi1, 0) + len(vocab))
+                bigram_prob = (bigram_dict.get(wi1).get(wi0, 0) + 1) / (vocab.get(wi1, 0) + len(vocab))
                 prob = (bigram_prob + trigram_prob) / 2
                 prob_dict.update({wi0 : prob})
                 sum += prob
-    return prob_dict
+        print(wi2)
+        print(wi1)
+    return prob_dict, sum
 def probability(wi0, bigram_dict, trigram_dict, tokens, vocab, *args):
-    prob_dict = probabilities(bigram_dict, trigram_dict, tokens, vocab, *args)
+    prob_dict, sum = probabilities(bigram_dict, trigram_dict, tokens, vocab, *args)
     if wi0 in prob_dict:
         return prob_dict.get(wi0)
     elif len(args) == 1:
-        wi1 = args[0].lower()
+        wi1 = args[0]
         if wi1 in bigram_dict:
             temp = list(bigram_dict.get(wi1).keys())
             if "<OOV>" in temp:
@@ -154,8 +159,8 @@ def probability(wi0, bigram_dict, trigram_dict, tokens, vocab, *args):
             prob_dict.update({wi0 : prob})
     elif len(args) == 2:
         # wi-1 and wi-2 respectively
-        wi2 = args[0].lower()
-        wi1 = args[1].lower()
+        wi2 = args[0]
+        wi1 = args[1]
         prob = 0
         if (wi2, wi1) in trigram_dict:
             trigram_prob = (trigram_dict.get((wi2, wi1)).get(wi0, 0) + 1) / (bigram_dict.get(wi2).get(wi1, 0) + len(vocab))
@@ -294,16 +299,6 @@ def trainAdjectiveClassifier(features, adjs):
     print("Optimal C is : " + str(optimalc))
     return bestmodel
 
-##################################################################
-##################################################################
-## Main and provided complete methods
-## Do not edit.
-## If necessary, write your own main, but then make sure to replace
-## and test with this before you submit.
-##
-## Note: Tests below will be a subset of those used to test your
-##       code for grading.
-
 def getConllTags(filename):
     #input: filename for a conll style parts of speech tagged file
     #output: a list of list of tuples
@@ -410,15 +405,56 @@ def getAdjDict():
     for i in range(len(keys)):
         if len(adj_dict.get(keys[i])) <= 10:
             adj_dict.pop(keys[i], None)
-    print("Finished Step 3.3")
+    #print("Finished Step 3.3")
     return adj_dict
+
+# Step 3.4
+def getLanguageModel(adj_dict):
+    csv_dict = preparecsv()
+    languageModel = dict()
+    for adj in adj_dict:
+        tempID = adj_dict.get(adj)
+        tokens = list()
+        for id in tempID:
+            tokens += tokenize_lyrics(id, csv_dict)
+        vocab = create_vocab_dict(tokens)
+        bigram = create_bigram_matrix(tokens, vocab)
+        trigram = create_trigram_matrix(tokens, vocab)
+        languageModel.update({adj : [bigram, trigram, tokens, vocab]})
+    return languageModel
+
+# Step 3.5 
+def genLyrics(adj, languageModel):
+    temp = languageModel.get(adj)
+    bigram = temp[0]
+    trigram = temp[1]
+    tokens = temp[2]
+    vocab = temp[3]
+    lyrics = list()
+    lyrics.append("<s>")
+    prob_dict, sum = probabilities(bigram, trigram, tokens, vocab, "<s>")
+    for w in prob_dict.keys():
+        prob_dict.update({w : prob_dict.get(w)/sum})
+    lyrics.append(np.random.choice(list(prob_dict.keys()), p = list(prob_dict.values())))
+    for i in range(1, 32):
+        prob_dict, sum = probabilities(bigram, trigram, tokens, vocab, lyrics[i-1], lyrics[i])
+        # Normalizes probabilty
+        for w in prob_dict.keys():
+            prob_dict.update({w : prob_dict.get(w)/sum})
+        print(lyrics)
+        print(prob_dict.keys())
+        lyrics.append(np.random.choice(list(prob_dict.keys()), p = list(prob_dict.values())))
+    print(lyrics)
+    return lyrics
 
 # Main
 if __name__== '__main__':
     from sklearn.model_selection import train_test_split
     #stage1checkpoint()
     #stage2checkpoint()
-    print(getAdjDict())
+    adj_dict = getAdjDict()
+    lModel = getLanguageModel(adj_dict)
+    genLyrics("good", lModel)
     print("Finished")
 '''
     #Test the tagger.
