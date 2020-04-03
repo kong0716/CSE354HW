@@ -40,7 +40,6 @@ def tokenize_lyrics(id, csv_dict):
     tokens.insert(0, "<s>")
     tokens.insert(len(tokens), "</s>")
     for i in range(len(tokens)):
-        tokens[i] == tokens[i]
         if tokens[i] == "\n":
             tokens[i] = "<newline>"
     return tokens
@@ -63,10 +62,9 @@ def tokensfromNlyrics(nlyrics):
     #print(sample_ids)
     for id in sample_ids:
         tokens += tokenize_lyrics(id, csv_dict)
-    '''
     for i in range(len(tokens)):
         tokens[i] = tokens[i].lower()
-    '''
+    
     return tokens
 #STEP 2.2 - 2.3: Create a bigram/trigram matrix (rows as previous word; columns as current word)
 def create_bigram_matrix(tokens, vocab):
@@ -96,80 +94,52 @@ def create_trigram_matrix(tokens, vocab):
 #           given either a single previous word (wi-1 -- a bigram model) 
 #           or two previous words (wi-1 and wi-2 -- a trigram model).
 def probabilities(bigram_dict, trigram_dict, tokens, vocab, *args):
-    wi1 = None
-    wi2 = None
+    wi1 = args[len(args)-1]
     prob_dict = dict()
     sum = 0
+    wi0List = list(bigram_dict.get(wi1).keys())
+    if "<OOV>" in wi0List:
+        wi0List.remove("<OOV>")
+    if len(wi0List) == 0:
+        # unigram
+        for wi0 in vocab:
+            prob = vocab.get(wi0)/len(tokens)
+            prob_dict.update({wi0 : prob})
+            sum += prob
+        return prob_dict, sum
     if len(args) == 1:
-        wi1 = args[0]
-        if wi1 in bigram_dict:
-            temp = list(bigram_dict.get(wi1).keys())
-            if "<OOV>" in temp:
-                temp.remove("<OOV>")
-            if len(temp) == 0:
-                #No words available based on wi-1 then do the unigram model in def probability()
-                #Returns an empty dictionary
-                return prob_dict
-            else:
-                #add-one smoothing bigram model
-                for wi0 in temp:
-                    prob = (bigram_dict.get(wi1).get(wi0) + 1)/(vocab.get(wi1) + len(vocab))
-                    sum += prob
-                    prob_dict.update({wi0 : prob})
-        else:
-            return prob_dict
+        #Add-one smooth bigram model
+        for wi0 in wi0List:
+            prob = (bigram_dict.get(wi1).get(wi0) + 1) / (vocab.get(wi1, 0) + len(vocab))
+            sum += prob
+            prob_dict.update({wi0 : prob})
+        return prob_dict, sum
     if len(args) == 2:
-        # wi-1 and wi-2 respectively
         wi2 = args[0]
-        wi1 = args[1]
         if (wi2, wi1) in trigram_dict:
-            temp = list(trigram_dict.get((wi2, wi1)).keys())
-            if "<OOV>" in temp:
-                temp.remove("<OOV>")
-            for wi0 in temp:
+            wi0List = list(trigram_dict.get((wi2, wi1)).keys())
+            for wi0 in wi0List:
                 trigram_prob = (trigram_dict.get((wi2, wi1)).get(wi0, 0) + 1) / (bigram_dict.get(wi2).get(wi1, 0) + len(vocab))
                 bigram_prob = (bigram_dict.get(wi1).get(wi0, 0) + 1) / (vocab.get(wi1, 0) + len(vocab))
                 prob = (bigram_prob + trigram_prob) / 2
-                prob_dict.update({wi0 : prob})
                 sum += prob
-        print(wi2)
-        print(wi1)
+                prob_dict.update({wi0 : prob})
     return prob_dict, sum
+
 def probability(wi0, bigram_dict, trigram_dict, tokens, vocab, *args):
     prob_dict, sum = probabilities(bigram_dict, trigram_dict, tokens, vocab, *args)
     if wi0 in prob_dict:
         return prob_dict.get(wi0)
     elif len(args) == 1:
-        wi1 = args[0]
-        if wi1 in bigram_dict:
-            temp = list(bigram_dict.get(wi1).keys())
-            if "<OOV>" in temp:
-                temp.remove("<OOV>")
-            if len(temp) == 0:
-                #No words available based on wi-1 then do the unigram model
-                prob = vocab.get(wi0)/len(tokens)
-                return prob
-            else:
-                #add-one smoothing bigram model
-                prob = (bigram_dict.get(wi1).get(wi0, 0) + 1)/(vocab.get(wi1, 0) + len(vocab))
-                return prob
-        else:
-            # wi-1 doesn't exist in the bigram
-            prob = vocab.get(wi0)/len(tokens)
-            prob_dict.update({wi0 : prob})
+        prob = vocab.get(wi0)/len(tokens)
+        return prob
     elif len(args) == 2:
         # wi-1 and wi-2 respectively
         wi2 = args[0]
         wi1 = args[1]
-        prob = 0
-        if (wi2, wi1) in trigram_dict:
-            trigram_prob = (trigram_dict.get((wi2, wi1)).get(wi0, 0) + 1) / (bigram_dict.get(wi2).get(wi1, 0) + len(vocab))
-            bigram_prob = (bigram_dict.get(wi1).get(wi0, 0) + 1) / (vocab.get(wi1, 0) + len(vocab))
-            prob = (bigram_prob + trigram_prob) / 2
-        else:
-            trigram_prob = 1/(len(vocab))
-            bigram_prob = (bigram_dict.get(wi1).get(wi0, 0) + 1) / (vocab.get(wi1, 0) + len(vocab))
-            prob = prob = (bigram_prob + trigram_prob) / 2
+        trigram_prob = (trigram_dict.get((wi2, wi1)).get(wi0, 0) + 1) / (bigram_dict.get(wi2).get(wi1, 0) + len(vocab))
+        bigram_prob = (bigram_dict.get(wi1).get(wi0, 0) + 1) / (vocab.get(wi1, 0) + len(vocab))
+        prob = (bigram_prob + trigram_prob) / 2
         return prob
 
 def listdif(one, one_cpy):
@@ -209,7 +179,7 @@ def stage1checkpoint():
 
 ## Stage 2 Checkpoint
 def stage2checkpoint():
-    lyricTokens = tokensfromNlyrics(len(preparecsv()))
+    lyricTokens = tokensfromNlyrics(5000)
     vocab = create_vocab_dict(lyricTokens)
     bigram = create_bigram_matrix(lyricTokens, vocab)
     trigram = create_trigram_matrix(lyricTokens, vocab)
@@ -443,7 +413,11 @@ def genLyrics(adj, languageModel):
             prob_dict.update({w : prob_dict.get(w)/sum})
         print(lyrics)
         print(prob_dict.keys())
-        lyrics.append(np.random.choice(list(prob_dict.keys()), p = list(prob_dict.values())))
+        print(prob_dict.values())
+        word = np.random.choice(list(prob_dict.keys()), p = list(prob_dict.values()))
+        lyrics.append(word)
+        if word == "</s>":
+            break
     print(lyrics)
     return lyrics
 
@@ -452,9 +426,9 @@ if __name__== '__main__':
     from sklearn.model_selection import train_test_split
     #stage1checkpoint()
     #stage2checkpoint()
-    adj_dict = getAdjDict()
-    lModel = getLanguageModel(adj_dict)
-    genLyrics("good", lModel)
+    #adj_dict = getAdjDict()
+    #lModel = getLanguageModel(adj_dict)
+    #genLyrics("good", lModel)
     print("Finished")
 '''
     #Test the tagger.
