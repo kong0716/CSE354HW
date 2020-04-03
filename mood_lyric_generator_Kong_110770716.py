@@ -1,6 +1,8 @@
 import  re, numpy as np, sklearn, scipy.stats, pandas, csv
 import random, math, sys
 from collections import Counter, defaultdict
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
 
 ## STEP 1.2:Read the csv into memory
 def preparecsv():
@@ -173,8 +175,7 @@ def listdif(one, one_cpy):
         li_dif = [i for i in one + one_cpy if i not in one or i not in one_cpy] 
         print(li_dif)
 ## Stage 1 Checkpoint
-def stage1checkpoint():
-    csv_dict = preparecsv()
+def stage1checkpoint(csv_dict):
     one = tokenize_lyrics("abba-burning_my_bridges", csv_dict)
     two = tokenize_lyrics("beach_boys-do_you_remember?", csv_dict)
     three = tokenize_lyrics("avril_lavigne-5,_4,_3,_2,_1_(countdown)", csv_dict)
@@ -213,12 +214,8 @@ def stage2checkpoint():
     print(probability("special", bigram, trigram, lyricTokens, vocab,"something", "very"))
     print(probability("funny", bigram, trigram, lyricTokens, vocab,"something", "very"))
 
-## Stage 3 Checkpoint
-#def stage3checkpoint():
-
 ##################################################################
 #4. Adjective Classifier
-
 
 def getFeaturesForTokens(tokens, wordToIndex):
     #input: tokens: a list of tokens,
@@ -241,6 +238,7 @@ def getFeaturesForTokens(tokens, wordToIndex):
                 vowelctr += 1
             if not tokens[targetI][i] in "aeiouAEIOU" and tokens[targetI].isalpha():
                 consonantctr += 1
+        curword = wordToIndex.get(tokens[targetI].lower(), 0)
         if not (targetI == 0 or targetI == num_words-1):
             prevword = wordToIndex.get(tokens[targetI-1].lower(), 0)
             nextword = wordToIndex.get(tokens[targetI+1].lower(), 0)
@@ -249,18 +247,34 @@ def getFeaturesForTokens(tokens, wordToIndex):
             nextword = wordToIndex.get(tokens[targetI+1].lower(), 0)
         if targetI == num_words-1 and num_words > 1:
             prevword = wordToIndex.get(tokens[targetI-1].lower(), 0)
-
+        # If some words are OOV
+        '''
+        if prevword == -1:
+            for i in reversed(range(2, targetI)):
+                prevword = wordToIndex.get(tokens[targetI-i].lower(), -1)
+                if prevword != -1:
+                    break
+        if nextword == -1:
+            for i in range(2, targetI):
+                nextword = wordToIndex.get(tokens[targetI-i].lower(), -1)
+                if nextword != -1:
+                    break
+        
+        if prevword == -1:
+            for i in reversed(range(2, targetI)):
+                prevword = wordToIndex.get(tokens[targetI-i].lower(), -1)
+                if prevword != -1:
+                    break
+        '''
         pass
         featureVector = [0]*(len(wordToIndex)*3+offset)
         featureVector[0] = vowelctr
         featureVector[1] = consonantctr
         featureVector[prevword + offset] = 1
-        featureVector[wordToIndex.get(tokens[targetI].lower(), 0) + offset + onehotOffset] = 1
+        featureVector[curword + offset + onehotOffset] = 1
         featureVector[nextword + offset + 2*onehotOffset] = 1
         featuresPerTarget.insert(targetI,featureVector)
     return featuresPerTarget #a (num_words x k) matrix
-
-from sklearn.linear_model import LogisticRegression
 
 
 def trainTestAdjectiveClassifier(X_train, y_train, X_subtrain, X_dev, y_subtrain, y_dev, c):
@@ -277,10 +291,10 @@ def trainAdjectiveClassifier(features, adjs):
     #output: model -- a trained sklearn.linear_model.LogisticRegression object
     X_subtrain, X_dev, y_subtrain, y_dev = train_test_split(features,
                                                             adjs,
-                                                            test_size=0.10)
+                                                            test_size=0.10, random_state = 42)
     oldacc = 0
     optimalc = 0
-    for i in range(0, 10):
+    for i in range(-10, 10):
         model = trainTestAdjectiveClassifier(features, adjs, X_subtrain, X_dev, y_subtrain, y_dev, math.pow(10, i))
         y_pred = model.predict(X_dev)
         #print(y_pred)
@@ -290,7 +304,7 @@ def trainAdjectiveClassifier(features, adjs):
             optimalc = math.pow(10, i)
             oldacc = newacc
     bestmodel = trainTestAdjectiveClassifier(features, adjs, X_subtrain, X_dev, y_subtrain, y_dev, optimalc)
-    print("Optimal C is : " + str(optimalc))
+    #print("Optimal C is : " + str(optimalc))
     return bestmodel
 
 def getConllTags(filename):
@@ -340,8 +354,7 @@ def getBestAdjModel(wordToIndex):
     try: 
         X_train, X_test, y_train, y_test = train_test_split(np.array(X),
                                                             np.array(y),
-                                                            test_size=0.20,
-                                                            random_state=42)
+                                                            test_size=0.20)
     except ValueError:
         print("\nLooks like you haven't implemented feature extraction yet.")
         print("[Ending test early]")
@@ -358,7 +371,7 @@ def extractFeatures(unique_id, wordToIndex):
     return 0
 
 ## Step 3.3
-def getAdjDict():
+def getAdjDict(csv_dict):
     #load data for 3 and 4 the adjective classifier data:
     taggedSents = getConllTags('daily547.conll')
     #first make word to index mapping: 
@@ -373,7 +386,6 @@ def getAdjDict():
 
     model = getBestAdjModel(wordToIndex)
 
-    csv_dict = preparecsv()
     #print(csv_dict)
     ids = csv_dict.keys()
     adj_dict = dict()
@@ -397,7 +409,7 @@ def getAdjDict():
     keys = list(adj_dict.keys())
     #print(keys)
     for i in range(len(keys)):
-        if len(adj_dict.get(keys[i])) <= 10:
+        if len(adj_dict.get(keys[i])) <= 3:
             adj_dict.pop(keys[i], None)
     #print("Finished Step 3.3")
     return adj_dict
@@ -422,6 +434,8 @@ def getLanguageModel(adj_dict):
 # Step 3.5 
 def genLyrics(adj, languageModel):
     temp = languageModel.get(adj)
+    if temp == None:
+        return str(adj) + " was not classified as an adjective"
     bigram = temp[0]
     trigram = temp[1]
     tokens = temp[2]
@@ -442,26 +456,42 @@ def genLyrics(adj, languageModel):
         #print(prob_dict.values())
         choices = list(prob_dict.keys())
         probs = list(prob_dict.values())
+        #Error checking
         if len(choices) == 0:
             print(lyrics)
         word = np.random.choice(choices, p = probs)
         lyrics.append(word)
         if word == "</s>":
             break
-    #print(lyrics)
     return lyrics
 
-# Main
-if __name__== '__main__':
-    from sklearn.model_selection import train_test_split
-    #stage1checkpoint()
-    #stage2checkpoint()
-    adj_dict = getAdjDict()
+## Stage 3 Checkpoint
+def stage3checkpoint(csv_dict):
+    adj_dict = getAdjDict(csv_dict)
     lModel = getLanguageModel(adj_dict)
     print("Language model created")
-    for i in range(10000):
-        genLyrics("good", lModel)
-    print("Finished")
+    print("Adjective is \"good\":")
+    for i in range(3):
+        print(genLyrics("good", lModel))
+    print("Adjective is \"happy\":")
+    for i in range(3):
+        print(genLyrics("happy", lModel))
+    print("Adjective is \"afraid\":")
+    for i in range(3):
+        print(genLyrics("afraid", lModel))
+    print("Adjective is \"red\":")
+    for i in range(3):
+        print(genLyrics("red", lModel))
+    print("Adjective is \"blue\":")
+    for i in range(3):
+        print(genLyrics("blue", lModel))
+    
+# Main
+if __name__== '__main__':
+    csv_dict = preparecsv()
+    stage1checkpoint(csv_dict)
+    stage2checkpoint()
+    stage3checkpoint(csv_dict)
 '''
     #Test the tagger.
     from sklearn.metrics import classification_report
