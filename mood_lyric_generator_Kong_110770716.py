@@ -58,8 +58,7 @@ def create_vocab_dict(tokens):
     word_count.update({"<OOV>" : oov})
     #print(word_count.get("<OOV>"))
     return word_count
-def tokensfromNlyrics(nlyrics):
-    csv_dict = preparecsv()
+def tokensfromNlyrics(nlyrics, csv_dict):
     tokens = list()
     sample_ids = list(csv_dict.keys())[0: nlyrics]
     #print(sample_ids)
@@ -203,16 +202,16 @@ def stage1checkpoint(csv_dict):
     print(four)
 
 ## Stage 2 Checkpoint
-def stage2checkpoint():
-    lyricTokens = tokensfromNlyrics(5000)
+def stage2checkpoint(csv_dict):
+    lyricTokens = tokensfromNlyrics(5000, csv_dict)
     vocab = create_vocab_dict(lyricTokens)
     bigram = create_bigram_matrix(lyricTokens, vocab)
     trigram = create_trigram_matrix(lyricTokens, vocab)
-    print(probability("you", bigram, trigram, lyricTokens, vocab,"i", "love"))
-    print(probability("special", bigram, trigram, lyricTokens, vocab,"midnight"))
-    print(probability("special", bigram, trigram, lyricTokens, vocab,"very"))
-    print(probability("special", bigram, trigram, lyricTokens, vocab,"something", "very"))
-    print(probability("funny", bigram, trigram, lyricTokens, vocab,"something", "very"))
+    print("p( you | (\'i\', \'love\') ) = " + str(probability("you", bigram, trigram, lyricTokens, vocab,"i", "love")))
+    print("p( special | (\'midnight\',) ) = " + str(probability("special", bigram, trigram, lyricTokens, vocab,"midnight")))
+    print("p( special | (\'\'very\',) ) = " + str(probability("special", bigram, trigram, lyricTokens, vocab,"very")))
+    print("p( special | (\'something\', \'very\') ) = " + str(probability("special", bigram, trigram, lyricTokens, vocab,"something", "very")))
+    print("p( funny | (\'something\', \'very\') ) = " + str(probability("funny", bigram, trigram, lyricTokens, vocab,"something", "very")))
 
 ##################################################################
 #4. Adjective Classifier
@@ -304,7 +303,7 @@ def trainAdjectiveClassifier(features, adjs):
             optimalc = math.pow(10, i)
             oldacc = newacc
     bestmodel = trainTestAdjectiveClassifier(features, adjs, X_subtrain, X_dev, y_subtrain, y_dev, optimalc)
-    #print("Optimal C is : " + str(optimalc))
+    print("Optimal C is : " + str(optimalc))
     return bestmodel
 
 def getConllTags(filename):
@@ -351,6 +350,7 @@ def getBestAdjModel(wordToIndex):
     #flatten by word rather than sent: 
     X = [j for i in sentXs for j in i]
     y= [j for i in sentYs for j in i]
+    np.random
     try: 
         X_train, X_test, y_train, y_test = train_test_split(np.array(X),
                                                             np.array(y),
@@ -409,7 +409,7 @@ def getAdjDict(csv_dict):
     keys = list(adj_dict.keys())
     #print(keys)
     for i in range(len(keys)):
-        if len(adj_dict.get(keys[i])) <= 3:
+        if len(adj_dict.get(keys[i])) <= 10:
             adj_dict.pop(keys[i], None)
     #print("Finished Step 3.3")
     return adj_dict
@@ -471,18 +471,23 @@ def stage3checkpoint(csv_dict):
     lModel = getLanguageModel(adj_dict)
     print("Language model created")
     print("Adjective is \"good\":")
+    print(adj_dict.get("good"))
     for i in range(3):
         print(genLyrics("good", lModel))
     print("Adjective is \"happy\":")
+    print(adj_dict.get("happy"))
     for i in range(3):
         print(genLyrics("happy", lModel))
     print("Adjective is \"afraid\":")
+    print(adj_dict.get("afraid"))
     for i in range(3):
         print(genLyrics("afraid", lModel))
     print("Adjective is \"red\":")
+    print(adj_dict.get("red"))
     for i in range(3):
         print(genLyrics("red", lModel))
     print("Adjective is \"blue\":")
+    print(adj_dict.get("blue"))
     for i in range(3):
         print(genLyrics("blue", lModel))
     
@@ -490,7 +495,7 @@ def stage3checkpoint(csv_dict):
 if __name__== '__main__':
     csv_dict = preparecsv()
     stage1checkpoint(csv_dict)
-    stage2checkpoint()
+    stage2checkpoint(csv_dict)
     stage3checkpoint(csv_dict)
 '''
     #Test the tagger.
