@@ -21,12 +21,19 @@ def preparecsv(filename):
         return id_dict
 
 # Step 1.2 Tokenize the file.
-def tokenizeReviews(csv_dict):
+def tokenizeReviews(id, csv_dict):
     tokenizer = Tokenizer()
     # Index 4 is the reviewText
     tokens = tokenizer.tokenize(csv_dict.get(id)[4])
     return tokens
-
+# Step 1.3 Use GenSim word2vec to train a 128-dimensional word2vec model utilizing only the training data.
+def genWord2Vec(csv_dict):
+    sentences = []
+    idList = list(csv_dict.keys())
+    for id in idList:
+        sentences.append(tokenizeReviews(id, csv_dict))
+    #print(sentences)
+    return sentences
 def main(argv):
     if len(argv) != 2:
         print("Needs a train and test file")
@@ -35,6 +42,11 @@ def main(argv):
         print(argv[1])
         train_csv = preparecsv(argv[0])
         test_csv = preparecsv(argv[1])
+        sentences = genWord2Vec(train_csv)
+        model = gensim.models.Word2Vec(sentences=sentences, size=128)
+        vec_great = model.wv['great']
+        print(model)
+        print(vec_great)
         return train_csv, test_csv  
         
 if __name__== '__main__':
