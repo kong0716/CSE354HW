@@ -9,6 +9,7 @@ from happiestfuntokenizing.happiestfuntokenizing import Tokenizer
 import sys
 from collections import Counter, defaultdict
 
+# Step 1.1 Read reviews and ratings from the file
 def preparecsv(filename):
     with open(filename) as csvfile:
         reader = csv.DictReader(csvfile)
@@ -19,6 +20,13 @@ def preparecsv(filename):
         #print(id_dict)
         return id_dict
 
+# Step 1.2 Tokenize the file.
+def tokenizeReviews(csv_dict):
+    tokenizer = Tokenizer()
+    # Index 4 is the reviewText
+    tokens = tokenizer.tokenize(csv_dict.get(id)[4])
+    return tokens
+
 def main(argv):
     if len(argv) != 2:
         print("Needs a train and test file")
@@ -27,7 +35,7 @@ def main(argv):
         print(argv[1])
         train_csv = preparecsv(argv[0])
         test_csv = preparecsv(argv[1])
-        return train_csv, test_csv
+        return train_csv, test_csv  
         
 if __name__== '__main__':
     main(sys.argv[1:])
