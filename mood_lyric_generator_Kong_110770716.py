@@ -237,16 +237,16 @@ def getFeaturesForTokens(tokens, wordToIndex):
                 vowelctr += 1
             if not tokens[targetI][i] in "aeiouAEIOU" and tokens[targetI].isalpha():
                 consonantctr += 1
-        curword = wordToIndex.get(tokens[targetI].lower(), 0)
-        if not (targetI == 0 or targetI == num_words-1):
-            prevword = wordToIndex.get(tokens[targetI-1].lower(), 0)
-            nextword = wordToIndex.get(tokens[targetI+1].lower(), 0)
-        #Cases for the beginning and end of the tokens
-        if targetI == 0 and num_words > 1:
-            nextword = wordToIndex.get(tokens[targetI+1].lower(), 0)
-        if targetI == num_words-1 and num_words > 1:
-            prevword = wordToIndex.get(tokens[targetI-1].lower(), 0)
-        # If some words are OOV
+            # If the word is OOV, default to the length of the dictionary
+            curword = wordToIndex.get(tokens[targetI].lower(), num_words)
+            if not (targetI == 0 or targetI == num_words-1):
+                prevword = wordToIndex.get(tokens[targetI-1].lower(), num_words)
+                nextword = wordToIndex.get(tokens[targetI+1].lower(), num_words)
+            #Cases for the beginning and end of the tokens
+            if targetI == 0 and num_words > 1:
+                nextword = wordToIndex.get(tokens[targetI+1].lower(), num_words)
+            if targetI == num_words-1 and num_words > 1:
+                prevword = wordToIndex.get(tokens[targetI-1].lower(), num_words)
         '''
         if prevword == -1:
             for i in reversed(range(2, targetI)):
