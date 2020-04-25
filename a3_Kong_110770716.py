@@ -104,7 +104,7 @@ def trainRater(features, ratings):
     X_subtrain, X_dev, y_subtrain, y_dev = train_test_split(features,
                                                             ratings,
                                                             test_size=0.10, random_state = 42)
-    oldMAE = 0
+    oldMAE = sys.maxsize
     optimalAlpha = 0
     for i in range(-10, 10):
         model = trainTestRater(features, ratings, X_subtrain, X_dev, y_subtrain, y_dev, math.pow(10, i))
