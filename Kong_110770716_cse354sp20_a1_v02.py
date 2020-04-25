@@ -210,6 +210,7 @@ if __name__== '__main__':
     print("\n", taggedSents[5], "\n", sentXs[5], "\n")
     print(taggedSents[192], "\n", sentXs[192], "\n")
 
+    #print(sentXs)
 
     #4. Test Classifier Model Building
     print("\n[ Classifier Test ]\n")
