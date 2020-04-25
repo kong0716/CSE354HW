@@ -64,12 +64,21 @@ def extractFeaturesVectors(csv_dict, model):
         reviewVectors += [extractMeanFeaturesVector(id, csv_dict, model)]
     return reviewVectors
 
+def extractYVector(csv_dict):
+    idList = list(csv_dict.keys())
+    # Paranoia
+    idList.sort()
+    yVector = list()
+    for id in idList:
+        # Ratings is at index 0
+        yVector += csv_dict.get(id)[0]
+    #print(len(yVector))
+    return yVector
+
 def main(argv):
     if len(argv) != 2:
         print("Needs a train and test file")
     else:
-        print(argv[0])
-        print(argv[1])
         train_csv = preparecsv(argv[0])
         test_csv = preparecsv(argv[1])
         sentences = genWord2Vec(train_csv)
@@ -78,7 +87,9 @@ def main(argv):
         vec_great = model.wv['great']
         print(model)
         print(vec_great)
-        extractFeaturesVectors(train_csv, model)
+        Xs = extractFeaturesVectors(train_csv, model)
+        Ys = extractYVector(train_csv)
+        
         return train_csv, test_csv  
         
 if __name__== '__main__':

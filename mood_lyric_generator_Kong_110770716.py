@@ -350,6 +350,7 @@ def getBestAdjModel(wordToIndex):
     #flatten by word rather than sent: 
     X = [j for i in sentXs for j in i]
     y= [j for i in sentYs for j in i]
+
     np.random
     try: 
         X_train, X_test, y_train, y_test = train_test_split(np.array(X),
