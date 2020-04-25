@@ -7,8 +7,7 @@ from sklearn.decomposition import PCA #just like L2 regularized logistic regress
 import scipy.stats as ss #for distributions
 from gensim.models import Word2Vec
 from happiestfuntokenizing.happiestfuntokenizing import Tokenizer
-import sys
-import warnings
+import sys, math
 from collections import Counter, defaultdict
 
 # Step 1.1 Read reviews and ratings from the file
@@ -68,16 +67,40 @@ def extractYVector(csv_dict):
     idList.sort()
     yVector = list()
     for id in idList:
-        # Ratings is at index 0
-        yVector += csv_dict.get(id)[0]
+        # Ratings is at index 0 and needed to be converted from string to float
+        yVector.append(float(csv_dict.get(id)[0]))
     #print(len(yVector))
     return yVector
+
+def trainTestRater(X_train, y_train, X_subtrain, X_dev, y_subtrain, y_dev, alpha):
+    #inputs: features: feature vectors (i.e. X)
+    #        adjs: whether adjective or not: [0, 1] (i.e. y)
+    #output: model -- a trained sklearn.linear_model.LogisticRegression object
+    model = Ridge(alpha=alpha)
+    model.fit(X_train, y_train)
+    return model
 
 def trainRater(features, ratings):
     #inputs: features: feature vectors (i.e. X)
     #        ratings: ratings value [0, 1, 2, 3, 4, 5] (i.e. y)
     #output: model -- a trained sklearn.linear_model.Ridge object
-    return
+    X_subtrain, X_dev, y_subtrain, y_dev = train_test_split(features,
+                                                            ratings,
+                                                            test_size=0.10, random_state = 42)
+    oldacc = 0
+    optimalAlpha = 0
+    for i in range(-10, 10):
+        model = trainTestRater(features, ratings, X_subtrain, X_dev, y_subtrain, y_dev, math.pow(10, i))
+        #calculate accuracy:
+        #newacc = (1 - np.sum(np.abs(y_pred - y_dev))/len(y_dev) )
+        newacc = model.score(X_dev, y_dev)
+        if newacc > oldacc:
+            optimalAlpha = math.pow(10, i)
+            oldacc = newacc
+    bestmodel = trainTestRater(features, ratings, X_subtrain, X_dev, y_subtrain, y_dev, optimalAlpha)
+    print("Accuracy is : " + str(oldacc))
+    print("Optimal Alpha is : " + str(optimalAlpha))
+    return bestmodel
 
 def main(argv):
     if len(argv) != 2:
