@@ -26,34 +26,52 @@ def preparecsv(filename):
         #print(id_dict)
         return id_dict
 # Step 1.2 Tokenize the file.
-def tokenizeReviews(id, csv_dict):
+def tokenizeReviews(id, csv_dict, vocab_dict, count):
     tokenizer = Tokenizer()
     # Index 4 is the reviewText
     tokens = tokenizer.tokenize(csv_dict.get(id)[4])
-    return tokens
+    if vocab_dict == None and count == None:
+        return tokens
+    else:
+        vocab = list(vocab_dict.keys())
+        for i in range(len(tokens)):
+            if tokens[i] not in vocab or count > vocab_dict.get(tokens[i]):
+                tokens[i] = "<OOV>"
+        return tokens
 # Step 1.3 Use GenSim word2vec to train a 128-dimensional word2vec model utilizing only the training data.
-def genWord2Vec(csv_dict):
+def buildVocab(csv_dict):
+    words = []
+    vocab_dict = dict()
+    idList = list(csv_dict.keys())
+    for id in idList:
+        words = tokenizeReviews(id, csv_dict, None, None)
+        for word in words:
+            if word in vocab_dict:
+                vocab_dict.update({word : vocab_dict.get(word) + 1})
+            else:
+                vocab_dict.update({word : 1})
+    return vocab_dict
+def genWord2Vec(csv_dict, vocab_dict, count):
     sentences = []
     idList = list(csv_dict.keys())
     for id in idList:
-        sentences.append(tokenizeReviews(id, csv_dict))
-
+        sentences.append(tokenizeReviews(id, csv_dict, vocab_dict, count))
+    
     model = gensim.models.Word2Vec(sentences=sentences, 
                                        size=128, 
-                                       min_count=1)
+                                       min_count=count)
     return model
 # Step 1.4 Extract features: utilizing your word2vec model, get a representation for each word per review. 
 # Then average these embeddings (using mean) into a single 128-dimensional dense set of features.
 def extractMeanFeaturesVector(id, csv_dict, model):
     # Returns a single 128-dimensional set of features in reviewText per word per id specified
-    wordsInReview = tokenizeReviews(id, csv_dict)
+    wordsInReview = tokenizeReviews(id, csv_dict, None, None)
     wordVector = []
     for word in wordsInReview:
         if word in model.wv.vocab:
             wordVector += [model.wv[word]]
-        #else:
-            # OOV is considered neutral
-        #    wordVector += [[0]*128]
+        else:
+            wordVector += [model.wv["<OOV>"]]
     wordVector = np.array(wordVector)
     # Gets the mean vector
     wordVector = wordVector.mean(axis=0)
@@ -91,7 +109,7 @@ def trainTestRater(X_train, y_train, X_subtrain, X_dev, y_subtrain, y_dev, alpha
     #inputs: features: feature vectors (i.e. X)
     #        adjs: whether adjective or not: [0, 1] (i.e. y)
     #output: model -- a trained sklearn.linear_model.LogisticRegression object
-    model = Ridge(alpha=alpha)
+    model = Ridge(alpha=alpha, solver='auto')
     model.fit(X_train, y_train)
     return model
 # Step 1.6 Run the predictor on the second set of data 
@@ -106,7 +124,7 @@ def trainRater(features, ratings):
                                                             test_size=0.10, random_state = 42)
     oldMAE = sys.maxsize
     optimalAlpha = 0
-    for i in range(-10, 10):
+    for i in range(-20, 20):
         model = trainTestRater(features, ratings, X_subtrain, X_dev, y_subtrain, y_dev, math.pow(10, i))
         y_pred = model.predict(X_dev)
         #calculate MAE
@@ -126,7 +144,10 @@ def trainRater(features, ratings):
     return bestmodel
 def checkpointOne(train_csv, test_csv):
     #Training
-    train_model = genWord2Vec(train_csv)
+    vocab_dict = buildVocab(train_csv)
+    count = 2
+    #The train model has an <OOV> index
+    train_model = genWord2Vec(train_csv, vocab_dict, count)
     Xs_train = extractFeaturesVectors(train_csv, train_model)
     ys_train = extractYVector(train_csv)
     X_train, X_test, y_train, y_test = train_test_split(np.array(Xs_train),
