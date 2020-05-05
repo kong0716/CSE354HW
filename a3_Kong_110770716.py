@@ -167,7 +167,54 @@ def checkpointOne(train_csv, test_csv):
     print("For ID 4258\nPredicted Value is " + str(pred_dict.get("4258")) + "\nTrue Value is " + str(test_csv.get("4258")[0]))
     print("For ID 4766\nPredicted Value is " + str(pred_dict.get("4766")) + "\nTrue Value is " + str(test_csv.get("4766")[0]))
     print("For ID 5800\nPredicted Value is " + str(pred_dict.get("5800")) + "\nTrue Value is " + str(test_csv.get("5800")[0]))
+
+    checkpointTwo(train_csv, train_model)
     return rater
+# Step 2.1 Grab the user_ids for both datasets.
+def getUserID_Dict(csv_dict):
+    idList = list(csv_dict.keys())
+    userID_Dict = dict()
+    for id in idList:
+        user_id = csv_dict.get(id)[3]
+        if user_id in userID_Dict:
+            temp = userID_Dict.get(user_id)
+            temp += [id]
+            userID_Dict.update({user_id : temp})
+        else:
+            userID_Dict.update({user_id : [id]})
+    return userID_Dict
+def checkpointTwo(train_csv, train_model):
+    userID_idDict = getUserID_Dict(train_csv)
+    userID_List = list(userID_idDict.keys())
+    reviewVectors = dict()
+    for user_id in userID_List:
+        #List of review ids that correspond to user_ids
+        temp = userID_idDict.get(user_id)
+        reviews = list()
+        for id in temp:
+            reviews.append(extractMeanFeaturesVector(id, train_csv, train_model))
+        reviews = np.array(reviews)
+        reviews = np.mean(reviews, axis=0)
+        #print(len(reviews))
+        #print(reviews)
+        reviewVectors.update({user_id : reviews})
+    #print(reviewVectors.get("11dbc98a59307be9e3faaad03389a0e9AF14"))
+
+    #Xs_train = extractFeaturesVectors(train_csv, train_model)
+    pca = PCA(n_components=3)
+    reviewMatrix = list(reviewVectors.values())
+    result = pca.fit_transform(reviewMatrix)
+    #print(result)
+    userID_PCADict = dict()
+    for i in range(len(userID_List)) :
+        userID_PCADict.update({userID_List[i] : result[i]})
+    #print(userID_PCADict)
+    '''
+    pca = PCA(n_components=3, svd_solver='randomized')
+    result = pca.fit_transform(Xs_train)
+    print(len(Xs_train[0]))
+    print(len(result))
+    '''
 def main(argv):
     sys.stderr = open('output.txt', 'w')
     if len(argv) != 2:
