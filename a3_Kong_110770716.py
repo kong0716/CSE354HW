@@ -64,7 +64,7 @@ def genWord2Vec(csv_dict, vocab_dict, count):
 # Step 1.4 Extract features: utilizing your word2vec model, get a representation for each word per review. 
 # Then average these embeddings (using mean) into a single 128-dimensional dense set of features.
 def extractMeanFeaturesVector(id, csv_dict, model):
-    # Returns a single 128-dimensional set of features in reviewText per word per id specified
+    # Returns a single 128-dimensional averaged set of features in reviewText per word per id specified
     wordsInReview = tokenizeReviews(id, csv_dict, None, None)
     wordVector = []
     for word in wordsInReview:
@@ -85,6 +85,7 @@ def extractFeaturesVectors(csv_dict, model):
     reviewVectors = list()
     for id in idList:
         reviewVectors += [extractMeanFeaturesVector(id, csv_dict, model)]
+    #print(len(reviewVectors[0]))
     return reviewVectors
 def extractYVector(csv_dict):
     idList = list(csv_dict.keys())
@@ -112,6 +113,13 @@ def trainTestRater(X_train, y_train, X_subtrain, X_dev, y_subtrain, y_dev, alpha
     model = Ridge(alpha=alpha, solver='auto')
     model.fit(X_train, y_train)
     return model
+def fixOutput(y_pred, min, max):
+    for i in range(len(y_pred)):
+        if y_pred[i] > max:
+            y_pred[i] = max
+        if y_pred[i] < min:
+            y_pred[i] = min
+    return y_pred
 # Step 1.6 Run the predictor on the second set of data 
 # and print both the mean absolute error and then Pearson correlation 
 # between the predictions and the dev set.  
@@ -124,20 +132,23 @@ def trainRater(features, ratings):
                                                             test_size=0.10, random_state = 42)
     oldMAE = sys.maxsize
     optimalAlpha = 0
-    for i in range(-20, 20):
+    for i in range(-20, 10):
         model = trainTestRater(features, ratings, X_subtrain, X_dev, y_subtrain, y_dev, math.pow(10, i))
         y_pred = model.predict(X_dev)
+        y_pred = fixOutput(y_pred, 1, 5)
         #calculate MAE
         newMAE = mean_absolute_error(y_dev, y_pred)
         #newacc = checkVectorAcc(y_dev, y_pred)
         # The best MAE is 0
-        if newMAE <= oldMAE:
+        if newMAE < oldMAE:
             optimalAlpha = math.pow(10, i)
             oldMAE = newMAE
+            #print(i)
     bestmodel = trainTestRater(features, ratings, X_subtrain, X_dev, y_subtrain, y_dev, optimalAlpha)
     pearsons = scipy.stats.pearsonr(y_dev, bestmodel.predict(X_dev))
     #print(bestmodel.predict(X_dev))
     #print(y_dev)
+    print("Best Training Model")
     print("Mean Absolute Error is : " + str((oldMAE)))
     print("Pearson Correlation is : " + str(pearsons))
     print("Optimal Alpha is : " + str(optimalAlpha))
@@ -156,13 +167,18 @@ def checkpointOne(train_csv, test_csv):
     rater = trainRater(X_train, y_train)
     #Testing
     Xs_test = extractFeaturesVectors(test_csv, train_model)
+    #print(X_test[0])
     #ys_test = extractYVector(test_csv)
-    ys_pred = rater.predict(Xs_test)
+    ys_pred = fixOutput(rater.predict(Xs_test), 1, 5)
     pred_dict = dict()
     idList = list(test_csv.keys())
     for i in range(len(idList)):
         pred_dict.update({idList[i] : ys_pred[i]})
     #print(pred_dict)
+    ys_true = extractYVector(test_csv)
+    MAE = mean_absolute_error(ys_true, ys_pred)
+    print("Testing Results")
+    print("Mean Absolute Error is : " + str((MAE)))
     print("For ID 548\nPredicted Value is " + str(pred_dict.get("548")) + "\nTrue Value is " + str(test_csv.get("548")[0]))
     print("For ID 4258\nPredicted Value is " + str(pred_dict.get("4258")) + "\nTrue Value is " + str(test_csv.get("4258")[0]))
     print("For ID 4766\nPredicted Value is " + str(pred_dict.get("4766")) + "\nTrue Value is " + str(test_csv.get("4766")[0]))
@@ -183,38 +199,82 @@ def getUserID_Dict(csv_dict):
         else:
             userID_Dict.update({user_id : [id]})
     return userID_Dict
+def extractEmbeddingsVectors(id, csv_dict, model):
+    # Returns a single 128-dimensional set of features in reviewText per word per id specified
+    wordsInReview = tokenizeReviews(id, csv_dict, None, None)
+    wordVector = []
+    for word in wordsInReview:
+        if word in model.wv.vocab:
+            wordVector += [model.wv[word]]
+        else:
+            wordVector += [model.wv["<OOV>"]]
+    wordVector = np.array(wordVector)
+    #print(len(wordVector[0]))
+    return wordVector
 def checkpointTwo(train_csv, train_model):
+    idList = list(train_csv.keys())
     userID_idDict = getUserID_Dict(train_csv)
     userID_List = list(userID_idDict.keys())
     reviewVectors = dict()
+
+    id_featureDict = dict() #Review embeddings corresponding to each review id, ie a list of word vectors for each reviewText
+    Xs_train = extractFeaturesVectors(train_csv, train_model)
+    for i in range(len(idList)):
+        #print(len(extractEmbeddingsVectors(idList[i], train_csv, train_model)[0]))
+        id_featureDict.update({idList[i] : extractEmbeddingsVectors(idList[i], train_csv, train_model)})
+    #print(len(list(id_featureDict.values())[1][0]))
     for user_id in userID_List:
         #List of review ids that correspond to user_ids
         temp = userID_idDict.get(user_id)
         reviews = list()
         for id in temp:
-            reviews.append(extractMeanFeaturesVector(id, train_csv, train_model))
+            reviews += [np.mean(id_featureDict.get(id),axis=0).tolist()]
         reviews = np.array(reviews)
+        #Takes the average of the entire word embeddings of all the reviews related to the user_ids
+        #average all of their word2vec features over the training data to treat as 128-dimensional "user-language representations".
         reviews = np.mean(reviews, axis=0)
-        #print(len(reviews))
-        #print(reviews)
         reviewVectors.update({user_id : reviews})
     #print(reviewVectors.get("11dbc98a59307be9e3faaad03389a0e9AF14"))
 
-    #Xs_train = extractFeaturesVectors(train_csv, train_model)
     pca = PCA(n_components=3)
     reviewMatrix = list(reviewVectors.values())
     result = pca.fit_transform(reviewMatrix)
-    #print(result)
     userID_PCADict = dict()
     for i in range(len(userID_List)) :
         userID_PCADict.update({userID_List[i] : result[i]})
-    #print(userID_PCADict)
+
+    Xs_train = list()
+    for id in idList:
+        embeddingsV = np.mean(id_featureDict.get(id),axis=0)
+        #print(embeddingsV.shape)
+        userFactors = userID_PCADict.get(train_csv.get(id)[3])
+        feature0 = embeddingsV*(userFactors[0])
+        feature1 = embeddingsV*(userFactors[1])
+        feature2 = embeddingsV*(userFactors[2])
+        feature = np.concatenate((feature0, feature1, feature2)).flatten()
+        Xs_train += [feature]
+
+    #print(len(Xs_train))
+    ys_train = extractYVector(train_csv)
+    X_train, X_test, y_train, y_test = train_test_split(np.array(Xs_train),
+                                                        np.array(ys_train),
+                                                        test_size=0.20)
+    
+    rater = trainRater(X_train, y_train)
+
+    print("Hello")
     '''
-    pca = PCA(n_components=3, svd_solver='randomized')
-    result = pca.fit_transform(Xs_train)
-    print(len(Xs_train[0]))
-    print(len(result))
+    #Testing
+    Xs_test = extractFeaturesVectors(test_csv, train_model)
+    #print(X_test[0])
+    #ys_test = extractYVector(test_csv)
+    ys_pred = rater.predict(Xs_test)
+    pred_dict = dict()
+    idList = list(test_csv.keys())
+    for i in range(len(idList)):
+        pred_dict.update({idList[i] : ys_pred[i]})
     '''
+    return userID_PCADict
 def main(argv):
     sys.stderr = open('output.txt', 'w')
     if len(argv) != 2:
