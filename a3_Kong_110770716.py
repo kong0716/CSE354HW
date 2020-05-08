@@ -11,6 +11,7 @@ from happiestfuntokenizing.happiestfuntokenizing import Tokenizer
 import sys, math
 from collections import Counter, defaultdict
 import torch
+import torch.nn as nn
 
 # Step 1.1 Read reviews and ratings from the file
 def preparecsv(filename):
@@ -371,10 +372,34 @@ def checkpointTwo(train_csv, test_csv, train_model, test_model):
         pred_dict.update({idList[i] : ys_pred[i]})
     '''
     return userID_PCADict
+
+### Neural Network Part
+
+class RNN(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size):
+        super(RNN, self).__init__()
+
+        self.hidden_size = hidden_size
+
+        self.i2h = nn.Linear(input_size + hidden_size, hidden_size)
+        self.i2o = nn.Linear(input_size + hidden_size, output_size)
+        self.softmax = nn.LogSoftmax(dim=1)
+
+    def forward(self, input, hidden):
+        combined = torch.cat((input, hidden), 1)
+        hidden = self.i2h(combined)
+        output = self.i2o(combined)
+        output = self.softmax(output)
+        return output, hidden
+
+    def initHidden(self):
+        return torch.zeros(1, self.hidden_size)
+
 def main(argv):
     sys.stderr = open('output.txt', 'w')
     if len(argv) != 2:
         print("Needs a train and test file")
+    '''
     else:
         train_csv = preparecsv(argv[0])
         test_csv = preparecsv(argv[1])
@@ -382,7 +407,15 @@ def main(argv):
             checkpointOne('food',train_csv, test_csv)
         if argv[0] == 'music_train.csv':
             checkpointOne('music',train_csv, test_csv)
-        return train_csv, test_csv  
-        
+    '''
+    # Pseudo Stage 3
+    n_hidden = 128
+    embedding_size = 128
+    # 5 ratings from 1-5
+    rnn = RNN(embedding_size, n_hidden, 5)
+    return
+
+
+
 if __name__== '__main__':
     main(sys.argv[1:])
