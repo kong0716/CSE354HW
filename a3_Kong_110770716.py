@@ -155,10 +155,10 @@ def trainRater(features, ratings):
     return bestmodel
 def checkpointOne(train_csv, test_csv):
     #Training
-    vocab_dict = buildVocab(train_csv)
+    trainVocab_dict = buildVocab(train_csv)
     count = 2
     #The train model has an <OOV> index
-    train_model = genWord2Vec(train_csv, vocab_dict, count)
+    train_model = genWord2Vec(train_csv, trainVocab_dict, count)
     Xs_train = extractFeaturesVectors(train_csv, train_model)
     ys_train = extractYVector(train_csv)
     X_train, X_test, y_train, y_test = train_test_split(np.array(Xs_train),
@@ -184,7 +184,12 @@ def checkpointOne(train_csv, test_csv):
     print("For ID 4766\nPredicted Value is " + str(pred_dict.get("4766")) + "\nTrue Value is " + str(test_csv.get("4766")[0]))
     print("For ID 5800\nPredicted Value is " + str(pred_dict.get("5800")) + "\nTrue Value is " + str(test_csv.get("5800")[0]))
 
-    checkpointTwo(train_csv, train_model)
+    #Training
+    testVocab_dict = buildVocab(test_csv)
+    count = 2
+    #The train model has an <OOV> index
+    test_model = genWord2Vec(test_csv, testVocab_dict, count)
+    checkpointTwo(train_csv, test_csv, train_model, test_model)
     return rater
 # Step 2.1 Grab the user_ids for both datasets.
 def getUserID_Dict(csv_dict):
@@ -199,6 +204,9 @@ def getUserID_Dict(csv_dict):
         else:
             userID_Dict.update({user_id : [id]})
     return userID_Dict
+# Step 2.2 For each user, treat their training data as "background" 
+# (i.e. the data from which to learn the user factors) in order to learn user factors: 
+# average all of their word2vec features over the training data to treat as 128-dimensional "user-language representations".
 def extractEmbeddingsVectors(id, csv_dict, model):
     # Returns a single 128-dimensional set of features in reviewText per word per id specified
     wordsInReview = tokenizeReviews(id, csv_dict, None, None)
@@ -211,21 +219,60 @@ def extractEmbeddingsVectors(id, csv_dict, model):
     wordVector = np.array(wordVector)
     #print(len(wordVector[0]))
     return wordVector
-def checkpointTwo(train_csv, train_model):
-    idList = list(train_csv.keys())
-    userID_idDict = getUserID_Dict(train_csv)
-    userID_List = list(userID_idDict.keys())
+# Step 1.3 Run PCA the matrix of user-language representations to reduce down to just three factors. 
+# Save the 3 dimensional transformation matrix (V) so that you may apply it to new data 
+# (i.e. the trial or test set when predicting -- when predicting you should not run PCA again; only before training).
+# Returns a dict of userIDs and corresponding user factors
+def genPCA(userID_List, reviewVectors):
+    pca = PCA(n_components=3)
+    reviewMatrix = list(reviewVectors.values())
+    result = pca.fit_transform(reviewMatrix)
+    userID_PCADict = dict()
+    for i in range(len(userID_List)) :
+        userID_PCADict.update({userID_List[i] : result[i]})
+    return userID_PCADict
+
+def checkpointTwo(train_csv, test_csv, train_model, test_model):
+    train_IDList = list(train_csv.keys())
+    test_IDList = list(test_csv.keys())
+    full_IDList = train_IDList + test_IDList
+
+    trainUserID_IDDict = getUserID_Dict(train_csv)
+    testUserID_IDDict = getUserID_Dict(test_csv)
+
+    userID_List = list(trainUserID_IDDict.keys()) + list(testUserID_IDDict.keys())
+    #print(len(userID_List))
+    #print(len(trainUserID_IDDict))
+    #print(len(testUserID_IDDict))
     reviewVectors = dict()
 
     id_featureDict = dict() #Review embeddings corresponding to each review id, ie a list of word vectors for each reviewText
     Xs_train = extractFeaturesVectors(train_csv, train_model)
-    for i in range(len(idList)):
-        #print(len(extractEmbeddingsVectors(idList[i], train_csv, train_model)[0]))
-        id_featureDict.update({idList[i] : extractEmbeddingsVectors(idList[i], train_csv, train_model)})
-    #print(len(list(id_featureDict.values())[1][0]))
+    for i in range(len(full_IDList)):
+        if full_IDList[i] in train_IDList and full_IDList[i] not in id_featureDict:
+            id_featureDict.update({full_IDList[i] : extractEmbeddingsVectors(full_IDList[i], train_csv, train_model)})
+        elif full_IDList[i] in train_IDList and full_IDList[i] in id_featureDict:
+            original = id_featureDict.get(full_IDList[i])
+            id_featureDict.update({full_IDList[i] : extractEmbeddingsVectors(full_IDList[i], train_csv, train_model) + original})
+        
+        elif full_IDList[i] in test_IDList and full_IDList[i] not in id_featureDict:
+            id_featureDict.update({full_IDList[i] : extractEmbeddingsVectors(full_IDList[i], test_csv, test_model)})
+        elif full_IDList[i] in test_IDList and full_IDList[i] in id_featureDict:
+            original = id_featureDict.get(full_IDList[i])
+            id_featureDict.update({full_IDList[i] : extractEmbeddingsVectors(full_IDList[i], test_csv, test_model) + original})
+        else:
+            print("Never reaches here")
     for user_id in userID_List:
         #List of review ids that correspond to user_ids
-        temp = userID_idDict.get(user_id)
+        temp = list()
+        if user_id in trainUserID_IDDict and user_id in testUserID_IDDict:
+            temp = trainUserID_IDDict.get(user_id) + testUserID_IDDict.get(user_id)
+        elif user_id in trainUserID_IDDict:
+            temp = trainUserID_IDDict.get(user_id)
+        elif user_id in testUserID_IDDict:
+            temp = testUserID_IDDict.get(user_id)
+        else:
+            print("Never reaches here")
         reviews = list()
         for id in temp:
             reviews += [np.mean(id_featureDict.get(id),axis=0).tolist()]
@@ -236,25 +283,28 @@ def checkpointTwo(train_csv, train_model):
         reviewVectors.update({user_id : reviews})
     #print(reviewVectors.get("11dbc98a59307be9e3faaad03389a0e9AF14"))
 
-    pca = PCA(n_components=3)
-    reviewMatrix = list(reviewVectors.values())
-    result = pca.fit_transform(reviewMatrix)
-    userID_PCADict = dict()
-    for i in range(len(userID_List)) :
-        userID_PCADict.update({userID_List[i] : result[i]})
+    userID_PCADict = genPCA(userID_List, reviewVectors)
 
     Xs_train = list()
-    for id in idList:
+    for id in train_IDList:
         embeddingsV = np.mean(id_featureDict.get(id),axis=0)
         #print(embeddingsV.shape)
-        userFactors = userID_PCADict.get(train_csv.get(id)[3])
+        userFactors = list()
+        # Doesn't matter where you get the user_id from, either train or test csv will sufficise if it exists in either one.
+        if id in train_IDList:
+            userFactors = userID_PCADict.get(train_csv.get(id)[3])
+        elif id in test_IDList:
+            userFactors = userID_PCADict.get(test_csv.get(id)[3])
+        else:
+            print("Never goes here")
         feature0 = embeddingsV*(userFactors[0])
         feature1 = embeddingsV*(userFactors[1])
         feature2 = embeddingsV*(userFactors[2])
-        feature = np.concatenate((feature0, feature1, feature2)).flatten()
+        feature = np.concatenate((embeddingsV, feature0, feature1, feature2)).flatten()
         Xs_train += [feature]
 
-    #print(len(Xs_train))
+    # The features go embeds; embeds*f1; embeds*f2; embeds*f3
+    print(len(Xs_train))
     ys_train = extractYVector(train_csv)
     X_train, X_test, y_train, y_test = train_test_split(np.array(Xs_train),
                                                         np.array(ys_train),
