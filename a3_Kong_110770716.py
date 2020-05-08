@@ -83,7 +83,7 @@ def extractMeanFeaturesVector(id, csv_dict, model):
 def extractFeaturesVectors(csv_dict, model):
     idList = list(csv_dict.keys())
     # Paranoia
-    idList.sort()
+    #idList.sort()
     reviewVectors = list()
     for id in idList:
         reviewVectors += [extractMeanFeaturesVector(id, csv_dict, model)]
@@ -375,6 +375,13 @@ def checkpointTwo(train_csv, test_csv, train_model, test_model):
 
 ### Neural Network Part
 
+def review2Tensor(reviewID, train_csv, train_model):
+    reviewVector = extractMeanFeaturesVector("1", train_csv, train_model)
+    #wordVectors = extractEmbeddingsVectors("1", train_csv, train_model)
+    x = torch.tensor([reviewVector])
+    return x
+
+
 class RNN(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
         super(RNN, self).__init__()
@@ -408,11 +415,25 @@ def main(argv):
         if argv[0] == 'music_train.csv':
             checkpointOne('music',train_csv, test_csv)
     '''
+    train_csv = preparecsv(argv[0])
+    test_csv = preparecsv(argv[1])
+    trainVocab_dict = buildVocab(train_csv)
+    count = 3
+    #The train model has an <OOV> index
+    train_model = genWord2Vec(train_csv, trainVocab_dict, count)
+
     # Pseudo Stage 3
     n_hidden = 128
     embedding_size = 128
     # 5 ratings from 1-5
     rnn = RNN(embedding_size, n_hidden, 5)
+    
+    input = review2Tensor("1", train_csv, train_model)
+    hidden = torch.zeros(1, n_hidden)
+    print(input.shape)
+    print(hidden.shape)
+    output, next_hidden = rnn(input, hidden)
+    print(output)
     return
 
 
