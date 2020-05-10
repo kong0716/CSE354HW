@@ -393,7 +393,7 @@ def review2Tensor(reviewID, seq_len,  train_csv, train_model):
     wordVectors = np.array([wordVectors])
     #print(wordVectors.shape)
     # Tensor for my NN wants type float for some reason even though it is less precision
-    return torch.tensor(wordVectors).float()
+    return torch.Tensor(wordVectors).float()
 def getXYFromData(seq_len, csv_dict, word2vec_model):
     # Returns a tensor of shape(N, seq_length, 128) and the to-be-removed reviewIDs in the list
     # We use 128 because of the word2vec embeddings
@@ -467,7 +467,7 @@ class my_LSTM(nn.Module):
         lstm_out, _ = self.lstm(input)
         result = lstm_out[-1]
         rating = self.hidden2rating(result)
-        print(result.shape)
+        #print(result.shape)
         temp = result.detach().cpu().numpy()
         temp2 = list()
         userFactors = [1, 1, 1]
@@ -483,9 +483,11 @@ class my_LSTM(nn.Module):
             feature1 = embeddingsV*(userFactors[1])
             feature2 = embeddingsV*(userFactors[2])
             feature = np.concatenate((embeddingsV, feature0, feature1, feature2)).flatten()
+            #print(feature.shape)
             temp2.append(feature)
-        temp2 = np.ndarray(temp2)
-        print(temp2.shape)
+        temp2 = torch.Tensor(np.array(temp2)).cuda()
+        #rating = torch.cat((rating, temp2), dim=1)
+        #print(rating.shape)
         return rating
 
     def init_hidden(self, batch_size):
@@ -546,7 +548,7 @@ def NNtrain(model, training_data, train_csv, test_csv, userID_PCADict, epochs=64
         
         print("For Epoch " + str(epoch) + " MSE Loss : " + str({np.mean(train_loss1)}) + " MAE Loss: " + str({np.mean(train_loss2)}))
 
-def NNtest(model, test_data):
+def NNtest(model, test_data, train_csv, test_csv, userID_PCADict):
     model.eval()
     loss_function1 = nn.MSELoss()
     loss_function2 = nn.L1Loss()
@@ -559,10 +561,10 @@ def NNtest(model, test_data):
             #hidden = model.init_hidden(data.shape[0])
             data = data.transpose(0,1).cuda()
 
-            preds = model(ids, data)
+            pred_rating = model(ids, data, userID_PCADict, train_csv, test_csv)
             #loss = loss_func(preds, labels.view(-1).cuda())
-            loss1 = loss_function1(preds, labels.cuda())
-            loss2 = loss_function2(preds, labels.cuda())
+            loss1 = loss_function1(pred_rating, labels.cuda())
+            loss2 = loss_function2(pred_rating, labels.cuda())
             test_loss1.append(loss1.item())
             test_loss2.append(loss2.item())
         print(f'MSE Loss for test: {np.mean(test_loss1)} MAE Loss for test: {np.mean(test_loss2)}')
@@ -577,7 +579,7 @@ def checkpointThree(train_csv, test_csv, word2vec_model, userID_PCADict):
 
     test_data =  build_dataloader(32, True, test_csv, word2vec_model)
 
-    NNtest(model, test_data)
+    NNtest(model, test_data, train_csv, test_csv, userID_PCADict)
 def main(argv):
     sys.stderr = open('output.txt', 'w')
     if len(argv) != 2:
