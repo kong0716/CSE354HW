@@ -12,6 +12,10 @@ import sys, math
 from collections import Counter, defaultdict
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from torch.utils.data import TensorDataset, DataLoader
+import matplotlib.pyplot as plt
 
 # Step 1.1 Read reviews and ratings from the file
 def preparecsv(filename):
@@ -375,32 +379,105 @@ def checkpointTwo(train_csv, test_csv, train_model, test_model):
 
 ### Neural Network Part
 
-def review2Tensor(reviewID, train_csv, train_model):
-    reviewVector = extractMeanFeaturesVector("1", train_csv, train_model)
-    #wordVectors = extractEmbeddingsVectors("1", train_csv, train_model)
-    x = torch.tensor([reviewVector])
-    return x
+def review2Tensor(reviewID, seq_len,  train_csv, train_model):
+    # Should return a numpy array of shape(sequence_length, 128)
+    # We use 128 because of the word2vec embeddings
+    # If the length of the review is less than sequence_length, we pad, else we cut off anything beyond
+    
+    wordVectors = extractEmbeddingsVectors("1", train_csv, train_model)
+    #print(wordVectors.shape)
+    if len(wordVectors) > seq_len:
+        wordVectors = wordVectors[:seq_len]
+    elif len(wordVectors) < seq_len:
+        wordVectors = np.concatenate((wordVectors, np.zeros((seq_len - len(wordVectors), 128))), axis=0)
+    #print(wordVectors)
+    # Tensor for my NN wants type float for some reason even though it is less precision
+    return torch.tensor(wordVectors).float()
+def getBatchFromData(batch_size, seq_len, csv_dict):
+    # Returns a tensor of shape(batch_size, seq_length, 128)
+    # We use 128 because of the word2vec embeddings
+    idList = list(csv_dict)
+    return 0
+def getMaxWordsInSentence(csv_dict):
+    idList = list(csv_dict.keys())
+    reviewVectors = list()
+    maxWords = -1
+    for id in idList:
+        wordsInReview = tokenizeReviews(id, csv_dict, None, None)
+        if len(wordsInReview) > maxWords:
+            maxWords = len(wordsInReview)
+    return maxWords
+def getAvgWordsInSentence(csv_dict):
+    idList = list(csv_dict.keys())
+    reviewVectors = list()
+    avgWords = list()
+    for id in idList:
+        wordsInReview = tokenizeReviews(id, csv_dict, None, None)    
+        avgWords += [len(wordsInReview)]
+    avgWords = np.mean(np.array(avgWords))
+    return avgWords
 
+class my_LSTM(nn.Module):
+    def __init__(self, embedding_dim, hidden_dim):
+        super(my_LSTM, self).__init__()
+    
+        self.hidden_dim = hidden_dim
 
-class RNN(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size):
-        super(RNN, self).__init__()
+        # The LSTM takes word embeddings as inputs, and outputs hidden states
+        # with dimensionality hidden_dim.
+        self.lstm = nn.LSTM(embedding_dim, hidden_dim)
 
-        self.hidden_size = hidden_size
+        # The linear layer that maps from hidden state space to tag space
+        self.hidden2rating = nn.Linear(hidden_dim, 5)
+        nn.
 
-        self.i2h = nn.Linear(input_size + hidden_size, hidden_size)
-        self.i2o = nn.Linear(input_size + hidden_size, output_size)
-        self.softmax = nn.LogSoftmax(dim=1)
+    def forward(self, reviewEmbedding):
+        #print(reviewEmbedding.dtype)
+        temp = reviewEmbedding.view(len(reviewEmbedding), 1, -1)
+        #print(temp)
+        lstm_out, _ = self.lstm(temp)
+        #tag_space = self.hidden2tag(lstm_out.view(len(reviewEmbedding), -1))
+        #print(lstm_out[-1])
+        rating = self.hidden2rating(lstm_out[-1])
+        return rating
 
-    def forward(self, input, hidden):
-        combined = torch.cat((input, hidden), 1)
-        hidden = self.i2h(combined)
-        output = self.i2o(combined)
-        output = self.softmax(output)
-        return output, hidden
+    def init_hidden(self, batch_size):
+        weight = next(self.parameters())
+        # init hidden state and cell state to tensor of 0s, both of size self.hidden_size
+        hidden, cell = (weight.new_zeros(batch_size, self.hs), weight.new_zeros(batch_size, self.hs))
 
-    def initHidden(self):
-        return torch.zeros(1, self.hidden_size)
+        # confirm they are on GPU
+        if self.run_cuda:
+            hidden.cuda()
+            cell.cuda()
+
+        return hidden, cell
+
+def NNtrain(model, train_csv, word2vec_model, epochs=5):
+    training_data = list(train_csv.keys())
+    seq_len = 50
+    loss_function = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    for epoch in range(epochs):  # again, normally you would NOT do 300 epochs, it is toy data
+        for id in training_data:
+            # Step 1. Remember that Pytorch accumulates gradients.
+            # We need to clear them out before each instance
+            model.zero_grad()
+
+            # Step 2. Get our inputs ready for the network, that is, turn them into
+            # Tensors of word indices.
+            review_in = review2Tensor("2", seq_len, train_csv, word2vec_model)
+            #print(review_in[0])
+            # Step 3. Run our forward pass.
+            pred_rating = model(review_in)
+
+            # Step 4. Compute the loss, gradients, and update the parameters by
+            #  calling optimizer.step()
+            rating = torch.tensor([float(train_csv.get(id)[0])])
+            #print(pred_rating)
+            loss = loss_function(pred_rating, rating)
+            loss.backward()
+            optimizer.step()
 
 def main(argv):
     sys.stderr = open('output.txt', 'w')
@@ -421,22 +498,50 @@ def main(argv):
     count = 3
     #The train model has an <OOV> index
     train_model = genWord2Vec(train_csv, trainVocab_dict, count)
+    #print(train_model.corpus_total_words)
+    #extractEmbeddingsVectors("1", train_csv, train_model)
+    temp = torch.tensor(extractEmbeddingsVectors("1", train_csv, train_model))
+    #print(temp.shape)
+    y = getAvgWordsInSentence(train_csv)
+    #print(y)
+    #print(review2Tensor("1", 50, train_csv, train_model).shape)
+    model = my_LSTM(128, 128)
+    NNtrain(model, train_csv, train_model)
+    #Average words per review is about 26 for music and 23 for food
+    #extractPaddedReviews(train_csv, train_model)
 
-    # Pseudo Stage 3
-    n_hidden = 128
-    embedding_size = 128
-    # 5 ratings from 1-5
-    rnn = RNN(embedding_size, n_hidden, 5)
+    '''
+    vocab_size = train_model.corpus_total_words
+    output_size = 1
+    embedding = review2Tensor("1", train_csv, train_model)
+    embedding_dim = len(embedding)
+    hidden_dim = 512
+    n_layers = 2
+
+    input = embedding
+    hidden = torch.zeros(1, hidden_dim)
+
+    output, next_hidden = my_LSTM(embedding_dim, hidden_dim)
+
+
+    # gather train/test data
     
-    input = review2Tensor("1", train_csv, train_model)
-    hidden = torch.zeros(1, n_hidden)
-    print(input.shape)
-    print(hidden.shape)
-    output, next_hidden = rnn(input, hidden)
-    print(output)
+
+    # instantiate model, optimizer, and loss function
+    model = my_LSTM(128, 128)
+    print(model)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    
+    #loss_func = nn.CrossEntropyLoss()
+    loss_func = nn.MSELoss()
+
+    # move model to GPU if possible
+    if torch.cuda.is_available():
+        model.cuda()
+
+    train(train_data)
+    '''
     return
-
-
 
 if __name__== '__main__':
     main(sys.argv[1:])
