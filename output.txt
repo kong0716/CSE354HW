@@ -1,14 +1,18 @@
-C:\Users\darre\AppData\Local\Programs\Python\Python37\lib\site-packages\torch\nn\modules\loss.py:432: UserWarning: Using a target size (torch.Size([1])) that is different to the input size (torch.Size([1, 5])). This will likely lead to incorrect results due to broadcasting. Please ensure they have the same size.
-  return F.mse_loss(input, target, reduction=self.reduction)
 Traceback (most recent call last):
-  File ".\a3_Kong_110770716.py", line 546, in <module>
+  File ".\a3_Kong_110770716.py", line 600, in <module>
     main(sys.argv[1:])
-  File ".\a3_Kong_110770716.py", line 508, in main
-    NNtrain(model, train_csv, train_model)
-  File ".\a3_Kong_110770716.py", line 478, in NNtrain
-    loss.backward()
-  File "C:\Users\darre\AppData\Local\Programs\Python\Python37\lib\site-packages\torch\tensor.py", line 198, in backward
-    torch.autograd.backward(self, gradient, retain_graph, create_graph)
-  File "C:\Users\darre\AppData\Local\Programs\Python\Python37\lib\site-packages\torch\autograd\__init__.py", line 100, in backward
-    allow_unreachable=True)  # allow_unreachable flag
-KeyboardInterrupt
+  File ".\a3_Kong_110770716.py", line 590, in main
+    checkpointOne('food',train_csv, test_csv)
+  File ".\a3_Kong_110770716.py", line 206, in checkpointOne
+    checkpointTwo(train_csv, test_csv, train_model)
+  File ".\a3_Kong_110770716.py", line 376, in checkpointTwo
+    checkpointThree(train_csv, test_csv, word2vec_model, userID_PCADict)
+  File ".\a3_Kong_110770716.py", line 576, in checkpointThree
+    NNtrain(model, training_data, train_csv, test_csv, userID_PCADict)
+  File ".\a3_Kong_110770716.py", line 529, in NNtrain
+    pred_rating = model(ids, data, userID_PCADict, train_csv, test_csv)
+  File "C:\Users\darre\AppData\Local\Programs\Python\Python37\lib\site-packages\torch\nn\modules\module.py", line 550, in __call__
+    result = self.forward(*input, **kwargs)
+  File ".\a3_Kong_110770716.py", line 486, in forward
+    temp2.appen(feature)
+AttributeError: 'list' object has no attribute 'appen'

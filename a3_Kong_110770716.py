@@ -16,6 +16,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
 import matplotlib.pyplot as plt
+import random
 
 # Step 1.1 Read reviews and ratings from the file
 def preparecsv(filename):
@@ -202,7 +203,7 @@ def checkpointOne(filename, train_csv, test_csv):
     count = 2
     #The train model has an <OOV> index
     test_model = genWord2Vec(test_csv, testVocab_dict, count)
-    checkpointTwo(train_csv, test_csv, train_model, test_model)
+    checkpointTwo(train_csv, test_csv, train_model)
     return rater
 # Step 2.1 Grab the user_ids for both datasets.
 def getUserID_Dict(csv_dict):
@@ -220,15 +221,15 @@ def getUserID_Dict(csv_dict):
 # Step 2.2 For each user, treat their training data as "background" 
 # (i.e. the data from which to learn the user factors) in order to learn user factors: 
 # average all of their word2vec features over the training data to treat as 128-dimensional "user-language representations".
-def extractEmbeddingsVectors(id, csv_dict, model):
+def extractEmbeddingsVectors(id, csv_dict, word2vec_model):
     # Returns a single 128-dimensional set of features in reviewText per word per id specified
     wordsInReview = tokenizeReviews(id, csv_dict, None, None)
     wordVector = []
     for word in wordsInReview:
-        if word in model.wv.vocab:
-            wordVector += [model.wv[word]]
+        if word in word2vec_model.wv.vocab:
+            wordVector += [word2vec_model.wv[word]]
         else:
-            wordVector += [model.wv["<OOV>"]]
+            wordVector += [word2vec_model.wv["<OOV>"]]
     wordVector = np.array(wordVector)
     #print(len(wordVector[0]))
     return wordVector
@@ -247,18 +248,7 @@ def genPCA2(userID_List, reviewVectors):
         userID_PCADict.update({userID_List[i] : result[i]})
     return userID_PCADict
 
-def genPCA(userID_List, reviewVectors):
-    pca = PCA(n_components=3)
-    reviewMatrix = list(reviewVectors.values())
-    result = pca.fit(reviewMatrix)
-    result = pca.transform(reviewMatrix)
-
-    userID_PCADict = dict()
-    for i in range(len(userID_List)) :
-        userID_PCADict.update({userID_List[i] : result[i]})
-    return userID_PCADict
-
-def checkpointTwo(train_csv, test_csv, train_model, test_model):
+def genPCA(userID_List, train_csv, test_csv, word2vec_model, id_featureDict):
     train_IDList = list(train_csv.keys())
     test_IDList = list(test_csv.keys())
     full_IDList = train_IDList + test_IDList
@@ -269,21 +259,9 @@ def checkpointTwo(train_csv, test_csv, train_model, test_model):
     train_UserIDList = list(trainUserID_IDDict.keys())
     test_UserIDList = list(testUserID_IDDict.keys())
     userID_List = list(set(train_UserIDList + test_UserIDList))
-    #print(len(userID_List))
-    #print(len(trainUserID_IDDict))
-    #print(len(testUserID_IDDict))
+
     reviewVectors = dict()
 
-    id_featureDict = dict() #Review embeddings corresponding to each review id, ie a list of word vectors for each reviewText
-    Xs_train = extractFeaturesVectors(train_csv, train_model)
-    # Assumes each review id is unique
-    for i in range(len(full_IDList)):
-        if full_IDList[i] in train_IDList:
-            id_featureDict.update({full_IDList[i] : extractEmbeddingsVectors(full_IDList[i], train_csv, train_model)})
-        elif full_IDList[i] in test_IDList:
-            id_featureDict.update({full_IDList[i] : extractEmbeddingsVectors(full_IDList[i], test_csv, test_model)})
-        else:
-            print("Never reaches here")
     for user_id in userID_List:
         #List of review ids that correspond to user_ids
         IDs = list()
@@ -307,22 +285,49 @@ def checkpointTwo(train_csv, test_csv, train_model, test_model):
         #average all of their word2vec features over the training data to treat as 128-dimensional "user-language representations".
         reviews = np.mean(reviews, axis=0)
         reviewVectors.update({user_id : reviews})
-    #print(reviewVectors.get("11dbc98a59307be9e3faaad03389a0e9AF14"))
+    pca = PCA(n_components=3)
+    reviewMatrix = list(reviewVectors.values())
+    result = pca.fit(reviewMatrix)
+    result = pca.transform(reviewMatrix)
 
-    #Non mean centered PCA
-    print("Non-mean centered PCA")
-    userID_PCADict = genPCA(train_UserIDList, reviewVectors)
+    userID_PCADict = dict()
+    for i in range(len(userID_List)) :
+        userID_PCADict.update({userID_List[i] : result[i]})
+    return userID_PCADict
+
+def checkpointTwo(train_csv, test_csv, word2vec_model):
+    print("\nStage 2:")
+    train_IDList = list(train_csv.keys())
+    test_IDList = list(test_csv.keys())
+    full_IDList = train_IDList + test_IDList
+
+    trainUserID_IDDict = getUserID_Dict(train_csv)
+    testUserID_IDDict = getUserID_Dict(test_csv)
+
+    train_UserIDList = list(trainUserID_IDDict.keys())
+    test_UserIDList = list(testUserID_IDDict.keys())
+    userID_List = list(set(train_UserIDList + test_UserIDList))
+
+    id_featureDict = dict() #Review embeddings corresponding to each review id, ie a list of word vectors for each reviewText
+    # Assumes each review id is unique
+    for i in range(len(full_IDList)):
+        if full_IDList[i] in train_IDList:
+            id_featureDict.update({full_IDList[i] : extractEmbeddingsVectors(full_IDList[i], train_csv, word2vec_model)})
+        elif full_IDList[i] in test_IDList:
+            id_featureDict.update({full_IDList[i] : extractEmbeddingsVectors(full_IDList[i], test_csv, word2vec_model)})
+        else:
+            print("Never reaches here")
+    userID_PCADict = genPCA(train_UserIDList, train_csv, test_csv, word2vec_model, id_featureDict)
 
     Xs_train = list()
     for id in train_IDList:
         embeddingsV = np.mean(id_featureDict.get(id),axis=0)
-        #print(embeddingsV.shape)
         userFactors = list()
         # Doesn't matter where you get the user_id from, either train or test csv will sufficise if it exists in either one.
         if id in train_IDList:
-            userFactors = userID_PCADict.get(train_csv.get(id)[3])
+            userFactors = userID_PCADict.get(train_csv.get(id)[3], [1, 1, 1])
         elif id in test_IDList:
-            userFactors = userID_PCADict.get(test_csv.get(id)[3])
+            userFactors = userID_PCADict.get(test_csv.get(id)[3], [1, 1, 1])
         else:
             print("Never goes here")
         feature0 = embeddingsV*(userFactors[0])
@@ -334,47 +339,42 @@ def checkpointTwo(train_csv, test_csv, train_model, test_model):
     # The features go embeds; embeds*f1; embeds*f2; embeds*f3
     #print(len(Xs_train[0]))
     ys_train = extractYVector(train_csv)
+    print("Training")
     rater = trainRater(Xs_train, ys_train)
 
-    print("Mean-Centered")
-    userID_PCADict = genPCA(train_UserIDList, reviewVectors)
-
-    Xs_train = list()
-    for id in train_IDList:
+    print("Testing")
+    #Testing
+    Xs_test = list()
+    for id in test_IDList:
         embeddingsV = np.mean(id_featureDict.get(id),axis=0)
-        #print(embeddingsV.shape)
         userFactors = list()
         # Doesn't matter where you get the user_id from, either train or test csv will sufficise if it exists in either one.
         if id in train_IDList:
-            userFactors = userID_PCADict.get(train_csv.get(id)[3])
+            userFactors = userID_PCADict.get(train_csv.get(id)[3], [1, 1, 1])
         elif id in test_IDList:
-            userFactors = userID_PCADict.get(test_csv.get(id)[3])
+            userFactors = userID_PCADict.get(test_csv.get(id)[3], [1, 1, 1])
         else:
             print("Never goes here")
         feature0 = embeddingsV*(userFactors[0])
         feature1 = embeddingsV*(userFactors[1])
         feature2 = embeddingsV*(userFactors[2])
         feature = np.concatenate((embeddingsV, feature0, feature1, feature2)).flatten()
-        Xs_train += [feature]
-
-    # The features go embeds; embeds*f1; embeds*f2; embeds*f3
-    #print(len(Xs_train))
-    ys_train = extractYVector(train_csv)
-    
-    rater = trainRater(Xs_train, ys_train)
-
-    print("Hello")
-    '''
-    #Testing
-    Xs_test = extractFeaturesVectors(test_csv, train_model)
+        Xs_test += [feature]
     #print(X_test[0])
     #ys_test = extractYVector(test_csv)
-    ys_pred = rater.predict(Xs_test)
+    ys_pred = fixOutput(rater.predict(Xs_test), 1, 5)
     pred_dict = dict()
     idList = list(test_csv.keys())
     for i in range(len(idList)):
         pred_dict.update({idList[i] : ys_pred[i]})
-    '''
+    #print(pred_dict)
+    ys_true = extractYVector(test_csv)
+    MAE = mean_absolute_error(ys_true, ys_pred)
+    print("Testing Results")
+    print("Mean Absolute Error is : " + str((MAE)))
+    
+    checkpointThree(train_csv, test_csv, word2vec_model, userID_PCADict)
+
     return userID_PCADict
 
 ### Neural Network Part
@@ -384,23 +384,33 @@ def review2Tensor(reviewID, seq_len,  train_csv, train_model):
     # We use 128 because of the word2vec embeddings
     # If the length of the review is less than sequence_length, we pad, else we cut off anything beyond
     
-    wordVectors = extractEmbeddingsVectors("1", train_csv, train_model)
+    wordVectors = extractEmbeddingsVectors(reviewID, train_csv, train_model)
     #print(wordVectors.shape)
     if len(wordVectors) > seq_len:
         wordVectors = wordVectors[:seq_len]
     elif len(wordVectors) < seq_len:
         wordVectors = np.concatenate((wordVectors, np.zeros((seq_len - len(wordVectors), 128))), axis=0)
-    #print(wordVectors)
+    wordVectors = np.array([wordVectors])
+    #print(wordVectors.shape)
     # Tensor for my NN wants type float for some reason even though it is less precision
     return torch.tensor(wordVectors).float()
-def getBatchFromData(batch_size, seq_len, csv_dict):
-    # Returns a tensor of shape(batch_size, seq_length, 128)
+def getXYFromData(seq_len, csv_dict, word2vec_model):
+    # Returns a tensor of shape(N, seq_length, 128) and the to-be-removed reviewIDs in the list
     # We use 128 because of the word2vec embeddings
     idList = list(csv_dict)
-    return 0
+    data = list()
+    dataTensor = torch.Tensor(len(idList), seq_len, 128)
+    result = list()
+    for id in idList:
+        data.append(review2Tensor(id, seq_len, csv_dict, word2vec_model))
+        result.append([float(csv_dict.get(id)[0])])
+    torch.cat(data, out=dataTensor)
+    result = torch.Tensor(result)
+    #print(result.shape)
+    #print(dataTensor.shape)
+    return dataTensor, result
 def getMaxWordsInSentence(csv_dict):
     idList = list(csv_dict.keys())
-    reviewVectors = list()
     maxWords = -1
     for id in idList:
         wordsInReview = tokenizeReviews(id, csv_dict, None, None)
@@ -409,42 +419,79 @@ def getMaxWordsInSentence(csv_dict):
     return maxWords
 def getAvgWordsInSentence(csv_dict):
     idList = list(csv_dict.keys())
-    reviewVectors = list()
     avgWords = list()
     for id in idList:
         wordsInReview = tokenizeReviews(id, csv_dict, None, None)    
         avgWords += [len(wordsInReview)]
     avgWords = np.mean(np.array(avgWords))
     return avgWords
+def getRatingsCount(csv_dict):
+    return 0
+
+def build_dataloader(bs, shfle, csv_dict, word2vec_model):
+    """
+        Builds a PyTorch Dataloader object
+
+        args:
+            bs - (integer) number of examples per batch
+            shfle - (bool) to randomly sample train instances from dataset
+    """
+    x, y = getXYFromData(50, csv_dict, word2vec_model)
+    #print(x.shape)
+    #print(y.shape)
+    idList = list(csv_dict)
+    dataset = TensorDataset(x, y)
+    mapping = list()
+    for id, data in zip(idList, dataset):
+        mapping.append((id, data))
+    return DataLoader(mapping, batch_size=bs, shuffle=shfle, num_workers=4)
 
 class my_LSTM(nn.Module):
-    def __init__(self, embedding_dim, hidden_dim):
+    def __init__(self, embedding_dim, hidden_dim, num_layers, dropout):
         super(my_LSTM, self).__init__()
     
         self.hidden_dim = hidden_dim
 
         # The LSTM takes word embeddings as inputs, and outputs hidden states
         # with dimensionality hidden_dim.
-        self.lstm = nn.LSTM(embedding_dim, hidden_dim)
+        self.lstm = nn.LSTM(embedding_dim, hidden_dim, num_layers, dropout=dropout)
 
         # The linear layer that maps from hidden state space to tag space
-        self.hidden2rating = nn.Linear(hidden_dim, 5)
-        nn.
+        self.hidden2rating = nn.Linear(hidden_dim, 1)
+        self.run_cuda = torch.cuda.is_available()
 
-    def forward(self, reviewEmbedding):
-        #print(reviewEmbedding.dtype)
-        temp = reviewEmbedding.view(len(reviewEmbedding), 1, -1)
-        #print(temp)
-        lstm_out, _ = self.lstm(temp)
-        #tag_space = self.hidden2tag(lstm_out.view(len(reviewEmbedding), -1))
-        #print(lstm_out[-1])
-        rating = self.hidden2rating(lstm_out[-1])
+    def forward(self, ids, input, userID_PCADict, train_csv, test_csv):
+        train_IDList = list(train_csv.keys())
+        test_IDList = list(test_csv.keys())
+
+        lstm_out, _ = self.lstm(input)
+        result = lstm_out[-1]
+        rating = self.hidden2rating(result)
+        print(result.shape)
+        temp = result.detach().cpu().numpy()
+        temp2 = list()
+        userFactors = [1, 1, 1]
+        for i in range(len(ids)):
+            id = ids[i]
+            embeddingsV = temp[i]
+            # Doesn't matter where you get the user_id from, either train or test csv will sufficise if it exists in either one.
+            if id in train_IDList:
+                userFactors = userID_PCADict.get(train_csv.get(id)[3], [1, 1, 1])
+            elif id in test_IDList:
+                userFactors = userID_PCADict.get(test_csv.get(id)[3], [1, 1, 1])
+            feature0 = embeddingsV*(userFactors[0])
+            feature1 = embeddingsV*(userFactors[1])
+            feature2 = embeddingsV*(userFactors[2])
+            feature = np.concatenate((embeddingsV, feature0, feature1, feature2)).flatten()
+            temp2.append(feature)
+        temp2 = np.ndarray(temp2)
+        print(temp2.shape)
         return rating
 
     def init_hidden(self, batch_size):
         weight = next(self.parameters())
         # init hidden state and cell state to tensor of 0s, both of size self.hidden_size
-        hidden, cell = (weight.new_zeros(batch_size, self.hs), weight.new_zeros(batch_size, self.hs))
+        hidden, cell = (weight.new_zeros(batch_size, self.hidden_dim), weight.new_zeros(batch_size, self.hidden_dim))
 
         # confirm they are on GPU
         if self.run_cuda:
@@ -453,37 +500,89 @@ class my_LSTM(nn.Module):
 
         return hidden, cell
 
-def NNtrain(model, train_csv, word2vec_model, epochs=5):
-    training_data = list(train_csv.keys())
+def NNtrain(model, training_data, train_csv, test_csv, userID_PCADict, epochs=64):
+    model.zero_grad()
+    idList = list(train_csv.keys())
     seq_len = 50
-    loss_function = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-    for epoch in range(epochs):  # again, normally you would NOT do 300 epochs, it is toy data
-        for id in training_data:
+    loss_function1 = nn.MSELoss()
+    loss_function2 = nn.L1Loss()
+    optimizer = torch.optim.Adam(model.parameters())
+    for epoch in range(epochs):
+        train_loss1 = []
+        train_loss2 = []
+        for ids, dataXY in training_data:
+            data = dataXY[0]
+            labels = dataXY[1]
+            #print(id)
+            #print(data)
+            #print(label)
             # Step 1. Remember that Pytorch accumulates gradients.
             # We need to clear them out before each instance
-            model.zero_grad()
+            optimizer.zero_grad()
 
             # Step 2. Get our inputs ready for the network, that is, turn them into
             # Tensors of word indices.
-            review_in = review2Tensor("2", seq_len, train_csv, word2vec_model)
-            #print(review_in[0])
+            # LSTM expects batch at dim=1
+            data = data.transpose(0,1).cuda()
+            #hidden = model.init_hidden(data.shape[0])
             # Step 3. Run our forward pass.
-            pred_rating = model(review_in)
+            pred_rating = model(ids, data, userID_PCADict, train_csv, test_csv)
 
             # Step 4. Compute the loss, gradients, and update the parameters by
             #  calling optimizer.step()
-            rating = torch.tensor([float(train_csv.get(id)[0])])
+            labels = labels.cuda()
+            #print(ratings)
             #print(pred_rating)
-            loss = loss_function(pred_rating, rating)
-            loss.backward()
-            optimizer.step()
+            #print(id)
+            
+            loss1 = loss_function1(pred_rating, labels)
+            loss2 = loss_function2(pred_rating, labels)
+            train_loss1.append(loss1.item())
+            train_loss2.append(loss2.item())
 
+
+            loss1.backward()
+            optimizer.step()
+        
+        print("For Epoch " + str(epoch) + " MSE Loss : " + str({np.mean(train_loss1)}) + " MAE Loss: " + str({np.mean(train_loss2)}))
+
+def NNtest(model, test_data):
+    model.eval()
+    loss_function1 = nn.MSELoss()
+    loss_function2 = nn.L1Loss()
+    with torch.no_grad():
+        test_loss1 = []
+        test_loss2 = []
+        for ids, dataXY in test_data:
+            data = dataXY[0]
+            labels = dataXY[1]
+            #hidden = model.init_hidden(data.shape[0])
+            data = data.transpose(0,1).cuda()
+
+            preds = model(ids, data)
+            #loss = loss_func(preds, labels.view(-1).cuda())
+            loss1 = loss_function1(preds, labels.cuda())
+            loss2 = loss_function2(preds, labels.cuda())
+            test_loss1.append(loss1.item())
+            test_loss2.append(loss2.item())
+        print(f'MSE Loss for test: {np.mean(test_loss1)} MAE Loss for test: {np.mean(test_loss2)}')
+
+def checkpointThree(train_csv, test_csv, word2vec_model, userID_PCADict):
+    training_data =  build_dataloader(16, True, train_csv, word2vec_model)
+
+    model = my_LSTM(128, 128, 2, .2)
+    if torch.cuda.is_available():
+        model.cuda()
+    NNtrain(model, training_data, train_csv, test_csv, userID_PCADict)
+
+    test_data =  build_dataloader(32, True, test_csv, word2vec_model)
+
+    NNtest(model, test_data)
 def main(argv):
     sys.stderr = open('output.txt', 'w')
     if len(argv) != 2:
         print("Needs a train and test file")
-    '''
+    
     else:
         train_csv = preparecsv(argv[0])
         test_csv = preparecsv(argv[1])
@@ -491,56 +590,10 @@ def main(argv):
             checkpointOne('food',train_csv, test_csv)
         if argv[0] == 'music_train.csv':
             checkpointOne('music',train_csv, test_csv)
-    '''
-    train_csv = preparecsv(argv[0])
-    test_csv = preparecsv(argv[1])
-    trainVocab_dict = buildVocab(train_csv)
-    count = 3
-    #The train model has an <OOV> index
-    train_model = genWord2Vec(train_csv, trainVocab_dict, count)
-    #print(train_model.corpus_total_words)
-    #extractEmbeddingsVectors("1", train_csv, train_model)
-    temp = torch.tensor(extractEmbeddingsVectors("1", train_csv, train_model))
-    #print(temp.shape)
-    y = getAvgWordsInSentence(train_csv)
-    #print(y)
-    #print(review2Tensor("1", 50, train_csv, train_model).shape)
-    model = my_LSTM(128, 128)
-    NNtrain(model, train_csv, train_model)
+
     #Average words per review is about 26 for music and 23 for food
     #extractPaddedReviews(train_csv, train_model)
 
-    '''
-    vocab_size = train_model.corpus_total_words
-    output_size = 1
-    embedding = review2Tensor("1", train_csv, train_model)
-    embedding_dim = len(embedding)
-    hidden_dim = 512
-    n_layers = 2
-
-    input = embedding
-    hidden = torch.zeros(1, hidden_dim)
-
-    output, next_hidden = my_LSTM(embedding_dim, hidden_dim)
-
-
-    # gather train/test data
-    
-
-    # instantiate model, optimizer, and loss function
-    model = my_LSTM(128, 128)
-    print(model)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-    
-    #loss_func = nn.CrossEntropyLoss()
-    loss_func = nn.MSELoss()
-
-    # move model to GPU if possible
-    if torch.cuda.is_available():
-        model.cuda()
-
-    train(train_data)
-    '''
     return
 
 if __name__== '__main__':
