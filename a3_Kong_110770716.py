@@ -155,6 +155,7 @@ def trainRater(features, ratings):
     print("Optimal Alpha is : " + str(optimalAlpha))
     return bestmodel
 def checkpointOne(filename, train_csv, test_csv, sharedTask):
+    print("\nStage 1:")
     #Training
     trainVocab_dict = buildVocab(train_csv)
     count = 3
@@ -360,7 +361,7 @@ def checkpointTwo(train_csv, test_csv, word2vec_model, sharedTask):
         print("Testing Results")
         print("Mean Absolute Error is : " + str((MAE)))
     
-    checkpointThree(train_csv, test_csv, word2vec_model, userID_PCADict)
+    checkpointThree(train_csv, test_csv, word2vec_model, userID_PCADict, sharedTask)
 
     return userID_PCADict
 
@@ -388,7 +389,13 @@ def getXYFromData(seq_len, csv_dict, word2vec_model):
     result = list()
     for id in idList:
         data.append(review2Tensor(id, seq_len, csv_dict, word2vec_model))
-        result.append([float(csv_dict.get(id)[0])])
+        temp = csv_dict.get(id)[0]
+        if "" == temp:
+            # Empty string for particular case of shared task
+            # Doesn't matter what is inputed as true_rating since we only care about prediction
+            result.append([3])
+        else:
+            result.append([float(csv_dict.get(id)[0])])
     torch.cat(data, out=dataTensor)
     result = torch.Tensor(result)
     return dataTensor, result
@@ -485,7 +492,7 @@ class my_LSTM(nn.Module):
 
         return hidden, cell
 
-def NNtrain(model, training_data, train_csv, test_csv, userID_PCADict, epochs=8):
+def NNtrain(model, training_data, train_csv, test_csv, userID_PCADict, epochs=64):
     model.zero_grad()
     idList = list(train_csv.keys())
     seq_len = 50
@@ -546,12 +553,12 @@ def NNtest(model, test_data, train_csv, test_csv, userID_PCADict, sharedTask):
                 loss2 = loss_function2(pred_rating, labels.cuda())
                 test_loss1.append(loss1.item())
                 test_loss2.append(loss2.item())
+                print(f'MSE Loss for test: {np.mean(test_loss1)} MAE Loss for test: {np.mean(test_loss2)}')
             if sharedTask:
                 id_ratingDict.update({ids[0] : pred_rating[0].cpu().numpy()[0]})
-        print(f'MSE Loss for test: {np.mean(test_loss1)} MAE Loss for test: {np.mean(test_loss2)}')
     return id_ratingDict
 
-def checkpointThree(train_csv, test_csv, word2vec_model, userID_PCADict):
+def checkpointThree(train_csv, test_csv, word2vec_model, userID_PCADict, shared_Task):
     print("\nStage 3:")
     training_data =  build_dataloader(16, True, train_csv, word2vec_model)
 
@@ -561,24 +568,27 @@ def checkpointThree(train_csv, test_csv, word2vec_model, userID_PCADict):
     NNtrain(model, training_data, train_csv, test_csv, userID_PCADict)
 
     test_data =  build_dataloader(32, False, test_csv, word2vec_model)
+    if not shared_Task:
+        NNtest(model, test_data, train_csv, test_csv, userID_PCADict, False)
+        return
+    else:
+        sharedTask(model, train_csv, test_csv, word2vec_model, userID_PCADict, shared_Task)
+    return
 
-    NNtest(model, test_data, train_csv, test_csv, userID_PCADict, False)
-
-    sharedTask(model, train_csv, test_csv, word2vec_model, userID_PCADict)
-
-def sharedTask(model, train_csv, test_csv, word2vec_model, userID_PCADict):
+def sharedTask(model, train_csv, test_csv, word2vec_model, userID_PCADict, shared_Task):
     print("\nRunning Kaggle Shared Task")
 
     test_data =  build_dataloader(1, False, test_csv, word2vec_model)
 
-    my_dict = NNtest(model, test_data, train_csv, test_csv, userID_PCADict, True)
+    my_dict = NNtest(model, test_data, train_csv, test_csv, userID_PCADict, shared_Task)
     with open('submission.csv', 'w') as f:
-        fieldnames = ['id', 'rating']
+        fieldnames = ['id', 'Predicted']
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         data = [dict(zip(fieldnames, [k, v])) for k, v in my_dict.items()]
         writer.writerows(data)
-    
+    print("Finished Writing Submission")
+    return
 def main(argv):
     if len(argv) != 2:
         print("Needs a train and test file")
@@ -587,9 +597,9 @@ def main(argv):
         train_csv = preparecsv(argv[0])
         test_csv = preparecsv(argv[1])
         if argv[0] == 'food_train.csv':
-            checkpointOne('food',train_csv, test_csv)
+            checkpointOne('food',train_csv, test_csv, False)
         if argv[0] == 'music_train.csv':
-            checkpointOne('music',train_csv, test_csv)
+            checkpointOne('music',train_csv, test_csv, False)
         if argv[1] == 'musicAndPetsup_test_noLabels.csv':
             checkpointOne(argv[0], train_csv, test_csv, True)
     #Average words per review is about 26 for music and 23 for food
