@@ -30,7 +30,6 @@ def preparecsv(filename):
                 id_dict.update({unique_id : [row['rating'], row['vote'], row['asin'], row['user_id'], "<s> <e> </s>"]})
             else:
                 id_dict.update({unique_id : [row['rating'], row['vote'], row['asin'], row['user_id'], "<s>" + row['reviewText'] + "</s>"]})
-        #print(id_dict)
         return id_dict
 # Step 1.2 Tokenize the file.
 def tokenizeReviews(id, csv_dict, vocab_dict, count):
@@ -82,7 +81,6 @@ def extractMeanFeaturesVector(id, csv_dict, model):
     wordVector = np.array(wordVector)
     # Gets the mean vector
     wordVector = wordVector.mean(axis=0)
-    #print(wordVector)
     return wordVector
 # Step 1.5 Build a rating predictor using L2 *linear* regression (can use the SKLearn Ridge class) with word2vec features.
 def extractFeaturesVectors(csv_dict, model):
@@ -92,7 +90,6 @@ def extractFeaturesVectors(csv_dict, model):
     reviewVectors = list()
     for id in idList:
         reviewVectors += [extractMeanFeaturesVector(id, csv_dict, model)]
-    #print(len(reviewVectors[0]))
     return reviewVectors
 def extractYVector(csv_dict):
     idList = list(csv_dict.keys())
@@ -102,7 +99,6 @@ def extractYVector(csv_dict):
     for id in idList:
         # Ratings is at index 0 and needed to be converted from string to float
         yVector.append(float(csv_dict.get(id)[0]))
-    #print(len(yVector))
     return yVector
 
 def checkVectorAcc(theoretical, experimental):
@@ -150,17 +146,15 @@ def trainRater(features, ratings):
         if newMAE < oldMAE:
             optimalAlpha = math.pow(10, i)
             oldMAE = newMAE
-            #print(i)
     bestmodel = trainTestRater(features, ratings, X_subtrain, X_dev, y_subtrain, y_dev, optimalAlpha)
     pearsons = scipy.stats.pearsonr(y_dev, bestmodel.predict(X_dev))
-    #print(bestmodel.predict(X_dev))
-    #print(y_dev)
+
     print("Best Training Model")
     print("Mean Absolute Error is : " + str((oldMAE)))
     print("Pearson Correlation is : " + str(pearsons))
     print("Optimal Alpha is : " + str(optimalAlpha))
     return bestmodel
-def checkpointOne(filename, train_csv, test_csv):
+def checkpointOne(filename, train_csv, test_csv, sharedTask):
     #Training
     trainVocab_dict = buildVocab(train_csv)
     count = 3
@@ -173,37 +167,36 @@ def checkpointOne(filename, train_csv, test_csv):
     #                                                    test_size=0.20,
     #                                                    random_state=42)
     rater = trainRater(Xs_train, ys_train)
-    #Testing
-    Xs_test = extractFeaturesVectors(test_csv, train_model)
-    #print(X_test[0])
-    #ys_test = extractYVector(test_csv)
-    ys_pred = fixOutput(rater.predict(Xs_test), 1, 5)
-    pred_dict = dict()
-    idList = list(test_csv.keys())
-    for i in range(len(idList)):
-        pred_dict.update({idList[i] : ys_pred[i]})
-    #print(pred_dict)
-    ys_true = extractYVector(test_csv)
-    MAE = mean_absolute_error(ys_true, ys_pred)
-    print("Testing Results")
-    print("Mean Absolute Error is : " + str((MAE)))
-    if filename == 'food':
-        print("For ID 548\nPredicted Value is " + str(pred_dict.get("548")) + "\nTrue Value is " + str(test_csv.get("548")[0]))
-        print("For ID 4258\nPredicted Value is " + str(pred_dict.get("4258")) + "\nTrue Value is " + str(test_csv.get("4258")[0]))
-        print("For ID 4766\nPredicted Value is " + str(pred_dict.get("4766")) + "\nTrue Value is " + str(test_csv.get("4766")[0]))
-        print("For ID 5800\nPredicted Value is " + str(pred_dict.get("5800")) + "\nTrue Value is " + str(test_csv.get("5800")[0]))
-    if filename == 'music':
-        print("For ID 329\nPredicted Value is " + str(pred_dict.get("329")) + "\nTrue Value is " + str(test_csv.get("329")[0]))
-        print("For ID 11419\nPredicted Value is " + str(pred_dict.get("11419")) + "\nTrue Value is " + str(test_csv.get("11419")[0]))
-        print("For ID 14023\nPredicted Value is " + str(pred_dict.get("14023")) + "\nTrue Value is " + str(test_csv.get("14023")[0]))
-        print("For ID 14912\nPredicted Value is " + str(pred_dict.get("14912")) + "\nTrue Value is " + str(test_csv.get("14912")[0]))
+    if not sharedTask:
+        #Testing
+        Xs_test = extractFeaturesVectors(test_csv, train_model)
+        #ys_test = extractYVector(test_csv)
+        ys_pred = fixOutput(rater.predict(Xs_test), 1, 5)
+        pred_dict = dict()
+        idList = list(test_csv.keys())
+        for i in range(len(idList)):
+            pred_dict.update({idList[i] : ys_pred[i]})
+        ys_true = extractYVector(test_csv)
+        MAE = mean_absolute_error(ys_true, ys_pred)
+        print("Testing Results")
+        print("Mean Absolute Error is : " + str((MAE)))
+        if filename == 'food':
+            print("For ID 548\nPredicted Value is " + str(pred_dict.get("548")) + "\nTrue Value is " + str(test_csv.get("548")[0]))
+            print("For ID 4258\nPredicted Value is " + str(pred_dict.get("4258")) + "\nTrue Value is " + str(test_csv.get("4258")[0]))
+            print("For ID 4766\nPredicted Value is " + str(pred_dict.get("4766")) + "\nTrue Value is " + str(test_csv.get("4766")[0]))
+            print("For ID 5800\nPredicted Value is " + str(pred_dict.get("5800")) + "\nTrue Value is " + str(test_csv.get("5800")[0]))
+        if filename == 'music':
+            print("For ID 329\nPredicted Value is " + str(pred_dict.get("329")) + "\nTrue Value is " + str(test_csv.get("329")[0]))
+            print("For ID 11419\nPredicted Value is " + str(pred_dict.get("11419")) + "\nTrue Value is " + str(test_csv.get("11419")[0]))
+            print("For ID 14023\nPredicted Value is " + str(pred_dict.get("14023")) + "\nTrue Value is " + str(test_csv.get("14023")[0]))
+            print("For ID 14912\nPredicted Value is " + str(pred_dict.get("14912")) + "\nTrue Value is " + str(test_csv.get("14912")[0]))
 
     #Training
     testVocab_dict = buildVocab(test_csv)
     count = 2
     #The train model has an <OOV> index
     test_model = genWord2Vec(test_csv, testVocab_dict, count)
-    checkpointTwo(train_csv, test_csv, train_model)
+    checkpointTwo(train_csv, test_csv, train_model, sharedTask)
     return rater
 # Step 2.1 Grab the user_ids for both datasets.
 def getUserID_Dict(csv_dict):
@@ -231,7 +224,6 @@ def extractEmbeddingsVectors(id, csv_dict, word2vec_model):
         else:
             wordVector += [word2vec_model.wv["<OOV>"]]
     wordVector = np.array(wordVector)
-    #print(len(wordVector[0]))
     return wordVector
 # Step 1.3 Run PCA the matrix of user-language representations to reduce down to just three factors. 
 # Save the 3 dimensional transformation matrix (V) so that you may apply it to new data 
@@ -266,7 +258,6 @@ def genPCA(userID_List, train_csv, test_csv, word2vec_model, id_featureDict):
         #List of review ids that correspond to user_ids
         IDs = list()
         if user_id in trainUserID_IDDict and user_id in testUserID_IDDict:
-            print("Both")
             IDs = trainUserID_IDDict.get(user_id) + testUserID_IDDict.get(user_id)
         elif user_id in trainUserID_IDDict:
             IDs = trainUserID_IDDict.get(user_id)
@@ -280,7 +271,6 @@ def genPCA(userID_List, train_csv, test_csv, word2vec_model, id_featureDict):
             for feature in features:
                 reviews += [feature]
         reviews = np.array(reviews)
-        #print(reviews.shape)
         #Takes the average of the entire word embeddings of all the reviews related to the user_ids
         #average all of their word2vec features over the training data to treat as 128-dimensional "user-language representations".
         reviews = np.mean(reviews, axis=0)
@@ -295,7 +285,7 @@ def genPCA(userID_List, train_csv, test_csv, word2vec_model, id_featureDict):
         userID_PCADict.update({userID_List[i] : result[i]})
     return userID_PCADict
 
-def checkpointTwo(train_csv, test_csv, word2vec_model):
+def checkpointTwo(train_csv, test_csv, word2vec_model, sharedTask):
     print("\nStage 2:")
     train_IDList = list(train_csv.keys())
     test_IDList = list(test_csv.keys())
@@ -337,41 +327,38 @@ def checkpointTwo(train_csv, test_csv, word2vec_model):
         Xs_train += [feature]
 
     # The features go embeds; embeds*f1; embeds*f2; embeds*f3
-    #print(len(Xs_train[0]))
     ys_train = extractYVector(train_csv)
     print("Training")
     rater = trainRater(Xs_train, ys_train)
-
-    print("Testing")
-    #Testing
-    Xs_test = list()
-    for id in test_IDList:
-        embeddingsV = np.mean(id_featureDict.get(id),axis=0)
-        userFactors = list()
-        # Doesn't matter where you get the user_id from, either train or test csv will sufficise if it exists in either one.
-        if id in train_IDList:
-            userFactors = userID_PCADict.get(train_csv.get(id)[3], [1, 1, 1])
-        elif id in test_IDList:
-            userFactors = userID_PCADict.get(test_csv.get(id)[3], [1, 1, 1])
-        else:
-            print("Never goes here")
-        feature0 = embeddingsV*(userFactors[0])
-        feature1 = embeddingsV*(userFactors[1])
-        feature2 = embeddingsV*(userFactors[2])
-        feature = np.concatenate((embeddingsV, feature0, feature1, feature2)).flatten()
-        Xs_test += [feature]
-    #print(X_test[0])
-    #ys_test = extractYVector(test_csv)
-    ys_pred = fixOutput(rater.predict(Xs_test), 1, 5)
-    pred_dict = dict()
-    idList = list(test_csv.keys())
-    for i in range(len(idList)):
-        pred_dict.update({idList[i] : ys_pred[i]})
-    #print(pred_dict)
-    ys_true = extractYVector(test_csv)
-    MAE = mean_absolute_error(ys_true, ys_pred)
-    print("Testing Results")
-    print("Mean Absolute Error is : " + str((MAE)))
+    if not sharedTask:
+        print("Testing")
+        #Testing
+        Xs_test = list()
+        for id in test_IDList:
+            embeddingsV = np.mean(id_featureDict.get(id),axis=0)
+            userFactors = list()
+            # Doesn't matter where you get the user_id from, either train or test csv will sufficise if it exists in either one.
+            if id in train_IDList:
+                userFactors = userID_PCADict.get(train_csv.get(id)[3], [1, 1, 1])
+            elif id in test_IDList:
+                userFactors = userID_PCADict.get(test_csv.get(id)[3], [1, 1, 1])
+            else:
+                print("Never goes here")
+            feature0 = embeddingsV*(userFactors[0])
+            feature1 = embeddingsV*(userFactors[1])
+            feature2 = embeddingsV*(userFactors[2])
+            feature = np.concatenate((embeddingsV, feature0, feature1, feature2)).flatten()
+            Xs_test += [feature]
+        #ys_test = extractYVector(test_csv)
+        ys_pred = fixOutput(rater.predict(Xs_test), 1, 5)
+        pred_dict = dict()
+        idList = list(test_csv.keys())
+        for i in range(len(idList)):
+            pred_dict.update({idList[i] : ys_pred[i]})
+        ys_true = extractYVector(test_csv)
+        MAE = mean_absolute_error(ys_true, ys_pred)
+        print("Testing Results")
+        print("Mean Absolute Error is : " + str((MAE)))
     
     checkpointThree(train_csv, test_csv, word2vec_model, userID_PCADict)
 
@@ -385,13 +372,11 @@ def review2Tensor(reviewID, seq_len,  train_csv, train_model):
     # If the length of the review is less than sequence_length, we pad, else we cut off anything beyond
     
     wordVectors = extractEmbeddingsVectors(reviewID, train_csv, train_model)
-    #print(wordVectors.shape)
     if len(wordVectors) > seq_len:
         wordVectors = wordVectors[:seq_len]
     elif len(wordVectors) < seq_len:
         wordVectors = np.concatenate((wordVectors, np.zeros((seq_len - len(wordVectors), 128))), axis=0)
     wordVectors = np.array([wordVectors])
-    #print(wordVectors.shape)
     # Tensor for my NN wants type float for some reason even though it is less precision
     return torch.Tensor(wordVectors).float()
 def getXYFromData(seq_len, csv_dict, word2vec_model):
@@ -406,8 +391,6 @@ def getXYFromData(seq_len, csv_dict, word2vec_model):
         result.append([float(csv_dict.get(id)[0])])
     torch.cat(data, out=dataTensor)
     result = torch.Tensor(result)
-    #print(result.shape)
-    #print(dataTensor.shape)
     return dataTensor, result
 def getMaxWordsInSentence(csv_dict):
     idList = list(csv_dict.keys())
@@ -437,8 +420,6 @@ def build_dataloader(bs, shfle, csv_dict, word2vec_model):
             shfle - (bool) to randomly sample train instances from dataset
     """
     x, y = getXYFromData(50, csv_dict, word2vec_model)
-    #print(x.shape)
-    #print(y.shape)
     idList = list(csv_dict)
     dataset = TensorDataset(x, y)
     mapping = list()
@@ -458,6 +439,7 @@ class my_LSTM(nn.Module):
 
         # The linear layer that maps from hidden state space to tag space
         self.hidden2rating = nn.Linear(hidden_dim, 1)
+        self.hiddenPCA2rating = nn.Linear(hidden_dim*4, 1)
         self.run_cuda = torch.cuda.is_available()
 
     def forward(self, ids, input, userID_PCADict, train_csv, test_csv):
@@ -466,10 +448,9 @@ class my_LSTM(nn.Module):
 
         lstm_out, _ = self.lstm(input)
         result = lstm_out[-1]
-        rating = self.hidden2rating(result)
-        #print(result.shape)
-        temp = result.detach().cpu().numpy()
-        temp2 = list()
+        #rating = self.hidden2rating(result)
+        temp = result.clone().cuda()
+        temp2 = torch.Tensor()
         userFactors = [1, 1, 1]
         for i in range(len(ids)):
             id = ids[i]
@@ -479,15 +460,17 @@ class my_LSTM(nn.Module):
                 userFactors = userID_PCADict.get(train_csv.get(id)[3], [1, 1, 1])
             elif id in test_IDList:
                 userFactors = userID_PCADict.get(test_csv.get(id)[3], [1, 1, 1])
-            feature0 = embeddingsV*(userFactors[0])
-            feature1 = embeddingsV*(userFactors[1])
-            feature2 = embeddingsV*(userFactors[2])
-            feature = np.concatenate((embeddingsV, feature0, feature1, feature2)).flatten()
-            #print(feature.shape)
-            temp2.append(feature)
-        temp2 = torch.Tensor(np.array(temp2)).cuda()
-        #rating = torch.cat((rating, temp2), dim=1)
-        #print(rating.shape)
+            userFactors = torch.Tensor(userFactors).cuda()
+            feature0 = torch.mul(embeddingsV,(userFactors[0])).cuda()
+            feature1 = torch.mul(embeddingsV,(userFactors[1])).cuda()
+            feature2 = torch.mul(embeddingsV,(userFactors[2])).cuda()
+            feature = torch.cat((feature0, feature1, feature2)).cuda()
+            if i == 0:
+                temp2 = feature.clone().unsqueeze(0).cuda()
+            else:
+                temp2 = torch.cat((temp2, feature.unsqueeze(0)))
+        result = torch.cat((result, temp2), dim=1)
+        rating = self.hiddenPCA2rating(result)
         return rating
 
     def init_hidden(self, batch_size):
@@ -502,7 +485,7 @@ class my_LSTM(nn.Module):
 
         return hidden, cell
 
-def NNtrain(model, training_data, train_csv, test_csv, userID_PCADict, epochs=64):
+def NNtrain(model, training_data, train_csv, test_csv, userID_PCADict, epochs=8):
     model.zero_grad()
     idList = list(train_csv.keys())
     seq_len = 50
@@ -515,9 +498,6 @@ def NNtrain(model, training_data, train_csv, test_csv, userID_PCADict, epochs=64
         for ids, dataXY in training_data:
             data = dataXY[0]
             labels = dataXY[1]
-            #print(id)
-            #print(data)
-            #print(label)
             # Step 1. Remember that Pytorch accumulates gradients.
             # We need to clear them out before each instance
             optimizer.zero_grad()
@@ -533,9 +513,6 @@ def NNtrain(model, training_data, train_csv, test_csv, userID_PCADict, epochs=64
             # Step 4. Compute the loss, gradients, and update the parameters by
             #  calling optimizer.step()
             labels = labels.cuda()
-            #print(ratings)
-            #print(pred_rating)
-            #print(id)
             
             loss1 = loss_function1(pred_rating, labels)
             loss2 = loss_function2(pred_rating, labels)
@@ -548,10 +525,11 @@ def NNtrain(model, training_data, train_csv, test_csv, userID_PCADict, epochs=64
         
         print("For Epoch " + str(epoch) + " MSE Loss : " + str({np.mean(train_loss1)}) + " MAE Loss: " + str({np.mean(train_loss2)}))
 
-def NNtest(model, test_data, train_csv, test_csv, userID_PCADict):
+def NNtest(model, test_data, train_csv, test_csv, userID_PCADict, sharedTask):
     model.eval()
     loss_function1 = nn.MSELoss()
     loss_function2 = nn.L1Loss()
+    id_ratingDict = dict()
     with torch.no_grad():
         test_loss1 = []
         test_loss2 = []
@@ -563,13 +541,18 @@ def NNtest(model, test_data, train_csv, test_csv, userID_PCADict):
 
             pred_rating = model(ids, data, userID_PCADict, train_csv, test_csv)
             #loss = loss_func(preds, labels.view(-1).cuda())
-            loss1 = loss_function1(pred_rating, labels.cuda())
-            loss2 = loss_function2(pred_rating, labels.cuda())
-            test_loss1.append(loss1.item())
-            test_loss2.append(loss2.item())
+            if not sharedTask:
+                loss1 = loss_function1(pred_rating, labels.cuda())
+                loss2 = loss_function2(pred_rating, labels.cuda())
+                test_loss1.append(loss1.item())
+                test_loss2.append(loss2.item())
+            if sharedTask:
+                id_ratingDict.update({ids[0] : pred_rating[0].cpu().numpy()[0]})
         print(f'MSE Loss for test: {np.mean(test_loss1)} MAE Loss for test: {np.mean(test_loss2)}')
+    return id_ratingDict
 
 def checkpointThree(train_csv, test_csv, word2vec_model, userID_PCADict):
+    print("\nStage 3:")
     training_data =  build_dataloader(16, True, train_csv, word2vec_model)
 
     model = my_LSTM(128, 128, 2, .2)
@@ -577,11 +560,26 @@ def checkpointThree(train_csv, test_csv, word2vec_model, userID_PCADict):
         model.cuda()
     NNtrain(model, training_data, train_csv, test_csv, userID_PCADict)
 
-    test_data =  build_dataloader(32, True, test_csv, word2vec_model)
+    test_data =  build_dataloader(32, False, test_csv, word2vec_model)
 
-    NNtest(model, test_data, train_csv, test_csv, userID_PCADict)
+    NNtest(model, test_data, train_csv, test_csv, userID_PCADict, False)
+
+    sharedTask(model, train_csv, test_csv, word2vec_model, userID_PCADict)
+
+def sharedTask(model, train_csv, test_csv, word2vec_model, userID_PCADict):
+    print("\nRunning Kaggle Shared Task")
+
+    test_data =  build_dataloader(1, False, test_csv, word2vec_model)
+
+    my_dict = NNtest(model, test_data, train_csv, test_csv, userID_PCADict, True)
+    with open('submission.csv', 'w') as f:
+        fieldnames = ['id', 'rating']
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        data = [dict(zip(fieldnames, [k, v])) for k, v in my_dict.items()]
+        writer.writerows(data)
+    
 def main(argv):
-    sys.stderr = open('output.txt', 'w')
     if len(argv) != 2:
         print("Needs a train and test file")
     
@@ -592,7 +590,8 @@ def main(argv):
             checkpointOne('food',train_csv, test_csv)
         if argv[0] == 'music_train.csv':
             checkpointOne('music',train_csv, test_csv)
-
+        if argv[1] == 'musicAndPetsup_test_noLabels.csv':
+            checkpointOne(argv[0], train_csv, test_csv, True)
     #Average words per review is about 26 for music and 23 for food
     #extractPaddedReviews(train_csv, train_model)
 
